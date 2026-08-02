@@ -39,7 +39,7 @@ ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进�
 
 ### 使用打包版本
 
-1. 启动 `release/ScreenFlow/ScreenFlow.exe`（或发布包中的同名可执行文件）。
+1. 启动 `release/ScreenFlow.exe`（单文件可执行程序；可单独拷贝使用。首次启动需解压运行时，可能稍慢）。
 2. 选择 **文件 → 打开项目文件夹…** 或 **新建项目文件夹…**。
 3. 添加页面，并导入用于识别与点击定位的图像资源。
 4. 编辑状态树：为不同界面情况配置动作；在无其他分支匹配时可使用「其他」（ELSE）分支。
@@ -117,7 +117,7 @@ python -m pip install -r requirements.txt
 python .\run_studio.py
 ```
 
-构建 Windows 发布目录（输出至 `release/ScreenFlow/`）：
+构建 Windows 单文件可执行程序（输出至 `release/ScreenFlow.exe`）：
 
 ```powershell
 powershell -File .\scripts\build_exe.ps1
@@ -162,7 +162,7 @@ Recommended remote repository name: `screenflow-studio`. The product name and ex
 
 ### Using the packaged build
 
-1. Launch `release/ScreenFlow/ScreenFlow.exe` (or the same executable from your distribution package).
+1. Launch `release/ScreenFlow.exe` (standalone single-file build; may be slower on first start while unpacking the runtime).
 2. Use **File → Open Project Folder…** or **New Project Folder…**.
 3. Add pages and import images used for detection and click targeting.
 4. Edit the state tree: assign actions to situations; use the ELSE (“Other”) branch when no scored candidate matches.
@@ -240,7 +240,7 @@ python -m pip install -r requirements.txt
 python .\run_studio.py
 ```
 
-Build the Windows distribution into `release/ScreenFlow/`:
+Build the Windows standalone executable to `release/ScreenFlow.exe`:
 
 ```powershell
 powershell -File .\scripts\build_exe.ps1
