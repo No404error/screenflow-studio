@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# PyInstaller / packaged app outputs
+dist/
+build/
+release/
+*.manifest
+
+# Legacy in-repo UI settings (migrated to ~/.screenflow/ui.json)
+.screenflow_ui.json
+.screenflow_ui.json.migrated
+.DS_Store
+Thumbs.db
