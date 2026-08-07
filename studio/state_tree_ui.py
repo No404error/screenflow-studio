@@ -470,10 +470,13 @@ class StateTreeEditor(QWidget):
         self.cmb_post_mode.blockSignals(True)
         self.cmb_post_mode.clear()
         self.cmb_post_mode.addItem(self.t("st_mode_once"), "once")
-        self.cmb_post_mode.addItem(self.t("st_mode_until_miss"), "until_miss")
+        self.cmb_post_mode.addItem(self.t("st_mode_until_page"), "until_page")
+        self.cmb_post_mode.addItem(self.t("st_mode_until_case"), "until_case")
         self.cmb_post_mode.addItem(self.t("st_mode_frames"), "frames")
         if mode is not None:
-            i = self.cmb_post_mode.findData(mode)
+            from screenflow.models import normalize_post_mode
+
+            i = self.cmb_post_mode.findData(normalize_post_mode(str(mode)))
             self.cmb_post_mode.setCurrentIndex(max(0, i))
         self.cmb_post_mode.blockSignals(False)
 
@@ -701,7 +704,9 @@ class StateTreeEditor(QWidget):
         self.steps.set_steps(node.actions)
         self.chk_post.setChecked(node.post is not None)
         if node.post:
-            mi = self.cmb_post_mode.findData(node.post.mode)
+            from screenflow.models import normalize_post_mode
+
+            mi = self.cmb_post_mode.findData(normalize_post_mode(node.post.mode))
             self.cmb_post_mode.setCurrentIndex(max(0, mi))
             if node.post.frames:
                 self.spin_frames.setValue(node.post.frames)
@@ -711,8 +716,9 @@ class StateTreeEditor(QWidget):
             self.spin_settle.setValue(0.0)
             self.chk_end_unknown.setChecked(False)
         leaf = node.is_leaf()
-        self.grp_actions.setEnabled(leaf and not node.is_else)
-        self.grp_post.setEnabled(leaf and not node.is_else)
+        # ELSE leaves still run actions / post-listen in the engine.
+        self.grp_actions.setEnabled(leaf)
+        self.grp_post.setEnabled(leaf)
         self._on_else_toggled_ui(node.is_else)
         self._update_score_visibility()
         self._update_post_visibility()
@@ -911,7 +917,7 @@ class StateTreeEditor(QWidget):
         if self._loading:
             return
         node = self._node_by_id(self._selected_id)
-        if node is None or not node.is_leaf() or node.is_else:
+        if node is None or not node.is_leaf():
             return
         node.actions = self.steps.get_steps()
         self._refresh_item_labels(node)
@@ -955,9 +961,8 @@ class StateTreeEditor(QWidget):
             node.layer_params = DecideParams()
         node.is_else = self.chk_else.isChecked()
         if node.is_else:
+            # ELSE does not compete on score; keep actions / post-listen.
             node.score = None
-            node.actions = []
-            node.post = None
         else:
             kind = str(self.cmb_score_kind.currentData() or "template")
             node.score = ScoreSpec(
@@ -967,14 +972,18 @@ class StateTreeEditor(QWidget):
                 roi=self._parse_roi(),
                 constant=self.spin_const.value(),
             )
-        if node.is_leaf() and not node.is_else:
+        if node.is_leaf():
             node.actions = self.steps.get_steps()
             if self.chk_post.isChecked():
                 if node.post is None:
                     node.post = PostListen(
                         mode=str(self.cmb_post_mode.currentData() or "once"), tree=[]
                     )
-                node.post.mode = str(self.cmb_post_mode.currentData() or "once")
+                from screenflow.models import normalize_post_mode
+
+                node.post.mode = normalize_post_mode(
+                    str(self.cmb_post_mode.currentData() or "once")
+                )
                 if node.post.mode == "frames":
                     node.post.frames = int(self.spin_frames.value())
                 else:

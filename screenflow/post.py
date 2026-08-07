@@ -6,8 +6,7 @@ from typing import Any, TYPE_CHECKING
 import numpy as np
 
 from screenflow.decide import decide_tree
-from screenflow.models import DecideResult, PostListen, Project, StateNode
-from screenflow.project import merge_decide_params
+from screenflow.models import DecideResult, PostListen, Project, StateNode, normalize_post_mode
 
 if TYPE_CHECKING:
     from screenflow.engine import FlowEngine
@@ -49,10 +48,17 @@ def run_post_listen(
 ) -> PostOutcome:
     """
     Evaluate post listen tree on screen and run leaf actions.
-    Ends on page change, once completion, until_miss+ELSE, or frames expiry.
+
+    End conditions by mode:
+      once — after one evaluation
+      until_page — when the page changes (empty tree / ELSE / no-match keep listening)
+      until_case — when the listen tree picks ELSE (legacy until_miss)
+      frames — when the frame budget is exhausted
     UNKNOWN: end only if listen.end_on_unknown; otherwise skip this frame.
     """
     out = PostOutcome(ran=True)
+    mode = normalize_post_mode(sticky.mode)
+
     if current_page_id == "UNKNOWN":
         if sticky.listen.end_on_unknown:
             out.ended = True
@@ -68,9 +74,22 @@ def run_post_listen(
         return out
 
     listen = sticky.listen
-    params = merge_decide_params(
-        project.runtime, listen.params
-    )
+    # Empty until_page: only wait for page_changed (handled above).
+    if not listen.tree:
+        if mode == "until_page":
+            path_parts = []
+            if sticky.path_prefix:
+                path_parts.append(sticky.path_prefix)
+            path_parts.append("post")
+            out.short_path = " › ".join(path_parts)
+            out.skipped = True
+            out.ran = False
+            out.detail["reason"] = "until_page_wait"
+            return out
+        out.ended = True
+        out.detail["reason"] = "empty_tree"
+        return out
+
     result: DecideResult = decide_tree(
         listen.tree,
         screen,
@@ -93,6 +112,12 @@ def run_post_listen(
     out.short_path = " › ".join(path_parts)
 
     if result.leaf is None:
+        # until_page: stay armed until the page actually changes
+        if mode == "until_page":
+            out.skipped = True
+            out.ran = False
+            out.detail["reason"] = "no_match_skip"
+            return out
         out.ended = True
         out.detail["reason"] = "no_match"
         return out
@@ -107,13 +132,15 @@ def run_post_listen(
         vars=engine.vars,
     )
 
-    mode = sticky.mode
     if mode == "once":
         out.ended = True
-    elif mode == "until_miss":
+    elif mode == "until_case":
         if used_else:
             out.ended = True
-            out.detail["reason"] = "else_ends_until_miss"
+            out.detail["reason"] = "else_ends_until_case"
+    elif mode == "until_page":
+        # Continue on same page (including ELSE); end only via page_changed above.
+        pass
     elif mode == "frames":
         if sticky.frames_left is not None:
             sticky.frames_left -= 1

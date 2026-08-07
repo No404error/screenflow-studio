@@ -262,8 +262,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_post_settle_hint": "After actions finish, wait this long before the first follow-up capture (e.g. 0.8).",
         "st_post_end_unknown": "End when page is unrecognized",
         "st_post_end_unknown_hint": "Off: skip unrecognized screens and continue observing",
-        "val_post_empty": "{where}: follow-up has no cases — add at least one",
-        "val_post_until_miss_else": "{where}: “Until another case matches” should include an “other case”",
+        "val_post_empty": "{where}: follow-up has no cases — add at least one (not required for “Until another page”)",
+        "val_post_until_case_else": "{where}: “Until another case matches” should include an “other case”",
         "val_post_settle": "{where}: wait before first observation cannot be negative",
         "st_edit_post_tree": "Edit follow-up cases…",
         "st_path": "Location: {path}",
@@ -309,7 +309,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_src_detect": "Recognition images",
         "st_src_click": "Click images",
         "st_mode_once": "Observe once",
-        "st_mode_until_miss": "Until another case matches",
+        "st_mode_until_page": "Until another page",
+        "st_mode_until_case": "Until another case matches",
         "st_mode_frames": "Fixed count",
         "st_detail_else": "When nothing else matches",
         "st_detail_branch": "{n} nested cases",
@@ -373,7 +374,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "help_case_post": (
             "After the main actions finish, optionally keep checking the screen for follow-up UI.\n"
             "• Enable follow-up — turn follow-up on or off for this case.\n"
-            "• Follow-up mode — Observe once; Until another case matches; or Fixed count.\n"
+            "• Follow-up mode — Observe once; Until another page; Until another case matches; or Fixed count.\n"
+            "  Until another page — wait until the detected page changes; the follow-up case tree may be empty (optional actions while waiting).\n"
+            "  Until another case matches — keep observing until the follow-up tree picks the other-case (ELSE) branch.\n"
             "• Observation count — how many captures when mode is Fixed count.\n"
             "• Wait before first observation (s) — pause after actions so the UI can appear (e.g. 0.5).\n"
             "• End when page is unrecognized — stop follow-up if no page can be identified; Off skips those frames and continues.\n"
@@ -669,8 +672,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_post_settle_hint": "主动作结束后，等待这么久再进行第一次后续截屏（例如 0.8）。",
         "st_post_end_unknown": "无法识别页面时结束",
         "st_post_end_unknown_hint": "关闭：跳过无法识别的画面并继续观察",
-        "val_post_empty": "「{where}」：后续观察没有情况，请至少添加一个",
-        "val_post_until_miss_else": "「{where}」：「直到命中其它情况」建议包含一条「其它情况」",
+        "val_post_empty": "「{where}」：后续观察没有情况，请至少添加一个（「直到命中其他页面」可不配情况）",
+        "val_post_until_case_else": "「{where}」：「直到命中其它情况」建议包含一条「其它情况」",
         "val_post_settle": "「{where}」：首次观察前等待不能为负数",
         "st_edit_post_tree": "编辑后续情况…",
         "st_path": "当前位置：{path}",
@@ -716,7 +719,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_src_detect": "识别图",
         "st_src_click": "点击图",
         "st_mode_once": "只观察一次",
-        "st_mode_until_miss": "直到命中其它情况",
+        "st_mode_until_page": "直到命中其他页面",
+        "st_mode_until_case": "直到命中其它情况",
         "st_mode_frames": "固定次数",
         "st_detail_else": "其它未命中时",
         "st_detail_branch": "{n} 个下级情况",
@@ -780,7 +784,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "help_case_post": (
             "主动作结束后，可继续检测后续界面。\n"
             "• 启用后续观察 — 是否为本情况开启后续观察。\n"
-            "• 观察模式 — 只观察一次；直到命中其它情况；或固定次数。\n"
+            "• 观察模式 — 只观察一次；直到命中其他页面；直到命中其它情况；或固定次数。\n"
+            "  直到命中其他页面 — 等到定到别的页面才结束；后续情况树可为空（仅等换页；需要等待期间动作时再配情况）。\n"
+            "  直到命中其它情况 — 持续观察，直到后续情况树走到「其它情况」分支才结束。\n"
             "• 观察次数 — 模式为「固定次数」时的截屏次数。\n"
             "• 首次观察前等待（秒） — 动作结束后先等待再截第一张（如 0.5）。\n"
             "• 无法识别页面时结束 — 定不了页时结束本次后续观察；关闭则跳过并继续。\n"

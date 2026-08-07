@@ -58,11 +58,26 @@ class DecideParams:
     on_close: str | None = None
 
 
+def normalize_post_mode(mode: str | None) -> str:
+    """
+    Canonical post-listen modes:
+      once | until_page | until_case | frames
+    Legacy alias: until_miss → until_case
+    """
+    m = (mode or "once").strip().lower()
+    if m == "until_miss":
+        return "until_case"
+    if m in ("once", "until_page", "until_case", "frames"):
+        return m
+    return "once"
+
+
 @dataclass
 class PostListen:
     """Post-processor listen config on a main leaf."""
 
-    mode: str = "once"  # once | until_miss | frames (phase 2)
+    # once | until_page | until_case | frames  (legacy until_miss → until_case)
+    mode: str = "once"
     frames: int | None = None
     # Seconds to wait after main actions before the first post capture
     settle: float = 0.0

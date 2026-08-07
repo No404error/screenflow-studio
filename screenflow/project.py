@@ -26,6 +26,7 @@ from screenflow.models import (
     ScoreSpec,
     StateNode,
     DEFAULT_STATE,
+    normalize_post_mode,
 )
 
 
@@ -146,7 +147,7 @@ def _post_from_json(raw: dict[str, Any] | None) -> PostListen | None:
     if not raw:
         return None
     return PostListen(
-        mode=str(raw.get("mode") or "once"),
+        mode=normalize_post_mode(str(raw.get("mode") or "once")),
         frames=int(raw["frames"]) if raw.get("frames") is not None else None,
         settle=float(raw.get("settle") or 0.0),
         end_on_unknown=bool(raw.get("end_on_unknown", False)),
@@ -159,7 +160,7 @@ def _post_to_json(post: PostListen | None) -> dict[str, Any] | None:
     if post is None:
         return None
     out: dict[str, Any] = {
-        "mode": post.mode,
+        "mode": normalize_post_mode(post.mode),
         "tree": [_node_to_json(n) for n in post.tree],
     }
     if post.frames is not None:

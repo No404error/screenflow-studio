@@ -3,7 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from screenflow.assets import list_page_assets, resolve_asset_path, sync_page_asset_maps
-from screenflow.models import ActionStep, PostListen, Project, StateNode
+from screenflow.models import (
+    ActionStep,
+    PostListen,
+    Project,
+    StateNode,
+    normalize_post_mode,
+)
 from screenflow.project import iter_tree
 
 
@@ -63,14 +69,16 @@ def _check_post_listen(
     if post is None:
         return []
     issues: list[Issue] = []
-    if not post.tree:
+    mode = normalize_post_mode(post.mode)
+    # until_page may use an empty tree (wait for page change only).
+    if not post.tree and mode != "until_page":
         issues.append(Issue("error", t("val_post_empty", where=where)))
-    elif post.mode == "until_miss":
+    if mode == "until_case" and post.tree:
         if not any(n.is_else for n in post.tree):
             issues.append(
-                Issue("warning", t("val_post_until_miss_else", where=where))
+                Issue("warning", t("val_post_until_case_else", where=where))
             )
-    if post.mode == "frames":
+    if mode == "frames":
         if post.frames is None or int(post.frames) < 1:
             issues.append(Issue("error", t("val_frames_missing", where=where)))
     if post.settle < 0:

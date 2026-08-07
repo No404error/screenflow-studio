@@ -31,7 +31,7 @@ def test_mr_loads_and_structure():
     assert "main" in p.pages
     main_leaf = p.pages["main"].state_tree[0]
     assert main_leaf.post is not None
-    assert main_leaf.post.mode == "until_miss"
+    assert main_leaf.post.mode == "until_case"
     assert any(n.is_else for n in main_leaf.post.tree)
     hero = p.pages["hero_select"].state_tree
     assert any(n.children for n in hero)

@@ -1,4 +1,4 @@
-"""FlowEngine.dispatch: main leaf → arm post → sticky once / until_miss / page change."""
+"""FlowEngine.dispatch: main leaf → arm post → sticky once / until_case / page change."""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -59,9 +59,9 @@ def _engine(project: Project) -> FlowEngine:
     return eng
 
 
-def test_dispatch_arms_until_miss_then_else_ends(project_root):
+def test_dispatch_arms_until_case_then_else_ends(project_root):
     post = PostListen(
-        mode="until_miss",
+        mode="until_case",
         tree=[
             StateNode(
                 id="popup",
@@ -93,7 +93,7 @@ def test_dispatch_arms_until_miss_then_else_ends(project_root):
     path = eng.dispatch(screen, pr)
     assert path and "Main" in path
     assert eng._sticky is not None
-    assert eng._sticky.mode == "until_miss"
+    assert eng._sticky.mode == "until_case"
 
     path2 = eng.dispatch(screen, pr)
     assert eng._sticky is not None
@@ -143,7 +143,7 @@ def test_dispatch_once_clears_sticky_same_frame(project_root):
 
 def test_dispatch_page_change_ends_sticky(project_root):
     post = PostListen(
-        mode="until_miss",
+        mode="until_page",
         tree=[
             StateNode(
                 id="hit",
@@ -272,6 +272,31 @@ def test_post_prefers_armed_page(project_root):
     assert eng._sticky is None  # once mode ends in same frame
 
 
+def test_dispatch_arms_until_page_empty_tree(project_root):
+    page = PageDef(
+        page_id="p",
+        name="Page",
+        detect_relpath="pages/p/detect/main.png",
+        state_tree=[
+            StateNode(
+                id="main",
+                name="Main",
+                is_else=True,
+                actions=[],
+                post=PostListen(mode="until_page", tree=[]),
+            )
+        ],
+    )
+    eng = _engine(_project(project_root, {"p": page}))
+    eng.dispatch(
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        MatchResult(page_id="p", confidence=0.9, center=(1, 1)),
+    )
+    assert eng._sticky is not None
+    assert eng._sticky.mode == "until_page"
+    assert eng._sticky.listen.tree == []
+
+
 def test_default_post_fallback(project_root):
     page = PageDef(
         page_id="p",
@@ -281,7 +306,7 @@ def test_default_post_fallback(project_root):
             StateNode(id="main", name="Main", is_else=True, actions=[]),
         ],
         default_post=PostListen(
-            mode="until_miss",
+            mode="until_case",
             tree=[
                 StateNode(
                     id="hit",
@@ -299,4 +324,4 @@ def test_default_post_fallback(project_root):
         MatchResult(page_id="p", confidence=0.9, center=(1, 1)),
     )
     assert eng._sticky is not None
-    assert eng._sticky.mode == "until_miss"
+    assert eng._sticky.mode == "until_case"

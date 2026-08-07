@@ -1,6 +1,6 @@
 """StateTreeEditor.flush_current_node writes form fields without Apply."""
 
-from screenflow.models import ScoreSpec, StateNode
+from screenflow.models import ActionStep, ScoreSpec, StateNode
 from studio.state_tree_ui import StateTreeEditor
 
 
@@ -43,3 +43,26 @@ def test_flush_before_select_keeps_edits():
     editor._load_node_into_form(b)
     assert a.name == "Kept"
     assert editor._selected_id == "b"
+
+
+def test_flush_else_keeps_actions():
+    from PySide6.QtWidgets import QApplication
+    import sys
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    editor = StateTreeEditor(_T())
+    step = ActionStep(op="wait", target=0.5)
+    a = StateNode(
+        id="a",
+        name="A",
+        score=ScoreSpec(key="main"),
+        priority=10,
+        actions=[step],
+    )
+    editor.bind([a], select_id="a")
+    editor.chk_else.setChecked(True)
+    editor.flush_current_node(rebuild=True)
+    assert a.is_else
+    assert a.score is None
+    assert len(a.actions) == 1
+    assert a.actions[0].op == "wait"

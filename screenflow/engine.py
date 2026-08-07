@@ -18,6 +18,7 @@ from screenflow.models import (
     Project,
     RuntimeConfig,
     StateNode,
+    normalize_post_mode,
 )
 from screenflow.post import StickyPost, run_post_listen
 
@@ -132,19 +133,24 @@ class FlowEngine:
             page = self.project.pages.get(page_id)
             if page and page.default_post:
                 post = page.default_post
-        if post is None or not post.tree:
+        if post is None:
             return
-        frames = post.frames if post.mode == "frames" else None
+        mode = normalize_post_mode(post.mode)
+        # until_page may arm with an empty tree (page-change wait only).
+        if not post.tree and mode != "until_page":
+            return
+        frames = post.frames if mode == "frames" else None
         self._sticky = StickyPost(
             page_id=page_id,
             listen=post,
-            mode=post.mode,
+            mode=mode,
             frames_left=frames,
             path_prefix=main_path,
             pending_settle=True,
         )
         self.elog.detail(
-            f"  post armed mode={post.mode} settle={post.settle:g}s"
+            f"  post armed mode={mode} settle={post.settle:g}s"
+            + (" (empty tree)" if not post.tree else "")
         )
 
     def _dispatch_sticky_post(self, screen: np.ndarray) -> str | None:
