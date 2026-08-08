@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { useI18n } from '@/i18n'
 import { useProjectStore } from '@/stores/project'
+import SectionTitle from '@/components/SectionTitle.vue'
 
-const { t } = useI18n()
 const project = useProjectStore()
 
 const pages = computed(() => Object.values(project.project?.page_docs || {}))
@@ -53,12 +52,11 @@ function clearPair(x: string, y: string) {
 
 <template>
   <div>
-    <h2>{{ t('page_pairs') }}</h2>
-    <p class="hint">Look-alike pages compete with priority when scores are close.</p>
+    <SectionTitle title-key="sec_pairs" help-key="help_pairs" />
     <ul class="list">
       <li v-for="([x, y], i) in pairs" :key="i" class="row">
         <span>{{ label(x) }} ↔ {{ label(y) }}</span>
-        <button class="sf-btn sf-btn-danger" type="button" @click="clearPair(x, y)">{{ t('delete') }}</button>
+        <button class="sf-btn sf-btn-danger" type="button" @click="clearPair(x, y)"><I18nText k="delete" /></button>
       </li>
     </ul>
     <div class="add">
@@ -70,19 +68,12 @@ function clearPair(x: string, y: string) {
         <option value="">—</option>
         <option v-for="p in pages" :key="p.id" :value="p.id">{{ p.name || p.id }}</option>
       </select>
-      <button class="sf-btn sf-btn-primary" type="button" @click="addPair">Add</button>
+      <button class="sf-btn sf-btn-primary" type="button" @click="addPair"><I18nText k="add_pair" /></button>
     </div>
   </div>
 </template>
 
 <style scoped>
-h2 {
-  margin: 0 0 var(--sf-space-2);
-}
-.hint {
-  color: var(--sf-ink-muted);
-  margin: 0 0 var(--sf-space-4);
-}
 .list {
   list-style: none;
   margin: 0 0 var(--sf-space-4);

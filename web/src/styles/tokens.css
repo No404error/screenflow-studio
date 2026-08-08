@@ -39,11 +39,25 @@
   --sf-space-6: 2rem;
   --sf-radius: 6px;
   --sf-radius-lg: 10px;
+  --sf-btn-h: 2rem;
+  --sf-btn-gap: 0.375rem;
+  --sf-btn-group-gap: 0.75rem;
 
   --sf-nav-width: 240px;
   --sf-nav-collapsed: 52px;
   --sf-runbar-h: 40px;
   --sf-drawer-h: 280px;
+
+  /*
+   * Form field columns — sized for max(en, zh) at --sf-fs-sm, plus control chrome.
+   * Drivers: "Wait before first observation (s)" / "首次观察前等待（秒）";
+   * "Used for page recognition" / "用作本页识别";
+   * select "Run as Administrator" / "以管理员身份运行" + native caret.
+   */
+  --sf-select-caret: 1.75rem;
+  --sf-col-field: 15.5rem;
+  --sf-col-select: 12.75rem;
+  --sf-op-select: 10rem;
 
   --sf-shadow-soft: 0 1px 2px rgb(26 34 32 / 6%);
   --sf-focus: 0 0 0 2px var(--sf-accent-soft), 0 0 0 4px var(--sf-accent);

@@ -1,9 +1,11 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { api } from '@/api/client'
+import { t } from '@/i18n'
 import type { Issue, ProjectDTO, StateNode } from '@/types/project'
 import { collectVarRefs, undeclaredRefs } from '@/utils/vars'
 import { useUiStore } from './ui'
+import { useRunStore } from './run'
 
 function emptyRuntime(): ProjectDTO['runtime'] {
   return {
@@ -83,10 +85,28 @@ export const useProjectStore = defineStore('project', () => {
       project.value.page_pairs = pairs
       const saved = await api.saveProject(project.value)
       setProject(saved)
-      useUiStore().showToast('saved')
+      const ui = useUiStore()
+      ui.showToast(useRunStore().isActive ? t('save_reload_hint') : t('saved'))
     } finally {
       saving.value = false
     }
+  }
+
+  async function close() {
+    await api.closeProject()
+    project.value = null
+    dirty.value = false
+    issues.value = []
+    useUiStore().select({ kind: 'welcome' })
+  }
+
+  async function confirmLeaveIfDirty(): Promise<boolean> {
+    if (!dirty.value) return true
+    const ui = useUiStore()
+    const choice = await ui.askUnsaved()
+    if (choice === 'cancel') return false
+    if (choice === 'save') await save()
+    return true
   }
 
   async function addPage(name: string) {
@@ -151,6 +171,8 @@ export const useProjectStore = defineStore('project', () => {
     open,
     create,
     save,
+    close,
+    confirmLeaveIfDirty,
     addPage,
     removePage,
     addMacro,

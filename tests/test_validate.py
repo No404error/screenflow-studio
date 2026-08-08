@@ -1,6 +1,7 @@
 from pathlib import Path
 import tempfile
 
+from tests.page_helpers import make_page
 from screenflow.models import (
     ActionStep,
     MacroDef,
@@ -12,7 +13,7 @@ from screenflow.models import (
     StateNode,
 )
 from screenflow.validate import validate_for_start, validate_project_structure
-from studio.i18n import I18n
+from studio_api.i18n import I18n
 
 
 def _proj(root: Path, pages: dict[str, PageDef], macros=None) -> Project:
@@ -30,9 +31,7 @@ def _proj(root: Path, pages: dict[str, PageDef], macros=None) -> Project:
 def test_scoreless_non_else_is_error():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        page = PageDef(
-            page_id="p",
-            detect_relpath="pages/p/features/main.png",
+        page = make_page("p", detect="pages/p/features/main.png",
             state_tree=[
                 StateNode(id="a", name="A", score=ScoreSpec(key="main")),
                 StateNode(id="b", name="B"),  # no score, not else
@@ -47,9 +46,7 @@ def test_scoreless_non_else_is_error():
 def test_frames_mode_requires_count():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        page = PageDef(
-            page_id="p",
-            detect_relpath="pages/p/features/main.png",
+        page = make_page("p", detect="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="a",
@@ -80,9 +77,7 @@ def test_missing_macro_and_script_warn():
         root = Path(d)
         (root / "pages" / "p" / "features").mkdir(parents=True)
         (root / "pages" / "p" / "features" / "main.png").write_bytes(b"x")
-        page = PageDef(
-            page_id="p",
-            detect_relpath="pages/p/features/main.png",
+        page = make_page("p", detect="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="a",
@@ -107,10 +102,8 @@ def test_macro_click_missing_is_warning_not_error():
         (root / "pages" / "p" / "features").mkdir(parents=True)
         (root / "pages" / "p" / "features" / "main.png").write_bytes(b"x")
         (root / "pages" / "p" / "features" / "ok.png").write_bytes(b"x")
-        page = PageDef(
-            page_id="p",
-            detect_relpath="pages/p/features/main.png",
-            feature_map={"ok": "pages/p/features/ok.png", "main": "pages/p/features/main.png"},
+        page = make_page("p", detect="pages/p/features/main.png",
+            features={"ok": "pages/p/features/ok.png", "main": "pages/p/features/main.png"},
             state_tree=[StateNode(id="DEFAULT", is_else=True, actions=[])],
         )
         macros = {
@@ -133,9 +126,7 @@ def test_macro_click_missing_is_warning_not_error():
 def test_else_sole_ok():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        page = PageDef(
-            page_id="p",
-            detect_relpath="x.png",
+        page = make_page("p", detect="x.png",
             state_tree=[StateNode(id="DEFAULT", is_else=True, actions=[])],
         )
         issues = validate_project_structure(_proj(root, {"p": page}), I18n().t)
@@ -145,9 +136,7 @@ def test_else_sole_ok():
 def test_unknown_post_mode_is_error():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        page = PageDef(
-            page_id="p",
-            detect_relpath="x.png",
+        page = make_page("p", detect="x.png",
             state_tree=[
                 StateNode(
                     id="a",
@@ -173,9 +162,7 @@ def test_score_key_must_exist_in_page_library():
         feat = root / "pages" / "p" / "features"
         feat.mkdir(parents=True)
         (feat / "main.png").write_bytes(b"x")
-        page = PageDef(
-            page_id="p",
-            detect_relpath="pages/p/features/main.png",
+        page = make_page("p", detect="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="a",
@@ -189,3 +176,31 @@ def test_score_key_must_exist_in_page_library():
         issues = validate_project_structure(_proj(root, {"p": page}), I18n().t)
         errs = [i for i in issues if i.level == "error"]
         assert any("missing_img" in i.text for i in errs)
+
+
+def test_unbound_referenced_feature_blocks_start():
+    from screenflow.models import FeatureDef
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        feat = root / "pages" / "p" / "features"
+        feat.mkdir(parents=True)
+        (feat / "main.png").write_bytes(b"x")
+        page = make_page(
+            "p",
+            detect="pages/p/features/main.png",
+            state_tree=[
+                StateNode(
+                    id="a",
+                    name="A",
+                    score=ScoreSpec(key="need_art"),
+                    actions=[ActionStep("wait", 0.1)],
+                ),
+                StateNode(id="DEFAULT", is_else=True, actions=[]),
+            ],
+        )
+        page.features["need_art"] = FeatureDef(id="need_art", label="Need art")
+        issues = validate_for_start(_proj(root, {"p": page}), I18n().t)
+        errs = [i for i in issues if i.level == "error"]
+        assert any("need_art" in i.text.lower() or "Need art" in i.text for i in errs)
+

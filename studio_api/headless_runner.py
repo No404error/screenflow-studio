@@ -1,16 +1,13 @@
-"""Studio-side controller for the external engine runner process."""
+"""Qt-free runner client for Web Studio API (elevate / subprocess)."""
 
 from __future__ import annotations
 
-import os
 import socket
 import subprocess
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
-
-from PySide6.QtCore import QObject, Signal
 
 from screenflow.runner_ipc import iter_messages, send_msg, serve_once
 from screenflow.runner_protocol import (
@@ -20,68 +17,22 @@ from screenflow.runner_protocol import (
     cmd_start,
     cmd_stop,
 )
-from studio.elevate import launch_runner
-
+from screenflow.elevate import launch_runner
+from screenflow.process_util import pid_running, terminate_pid
 
 LogFn = Callable[[str], None]
 StatusFn = Callable[[dict[str, Any]], None]
 
 
-def _pid_running(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    if os.name == "nt":
-        import ctypes
-
-        # QUERY_LIMITED often works even across elevation for existence checks.
-        process_query_limited = 0x1000
-        handle = ctypes.windll.kernel32.OpenProcess(process_query_limited, False, pid)
-        if handle:
-            ctypes.windll.kernel32.CloseHandle(handle)
-            return True
-        return False
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
-
-
-def _terminate_pid(pid: int) -> None:
-    """Best-effort; unelevated Studio may be denied killing an elevated Runner."""
-    if pid <= 0:
-        return
-    if os.name == "nt":
-        import ctypes
-
-        process_terminate = 0x0001
-        handle = ctypes.windll.kernel32.OpenProcess(process_terminate, False, pid)
-        if not handle:
-            return
-        try:
-            ctypes.windll.kernel32.TerminateProcess(handle, 1)
-        finally:
-            ctypes.windll.kernel32.CloseHandle(handle)
-        return
-    try:
-        os.kill(pid, 15)
-    except OSError:
-        pass
-
-
-class RunnerClient(QObject):
-    """
-    Listen on localhost, launch runner, forward log/status via Qt signals.
-    """
-
-    log_message = Signal(str)
-    status_payload = Signal(object)
-    failed = Signal(str)
-    ready = Signal()
-    exited = Signal(int)
-
-    def __init__(self, parent: QObject | None = None) -> None:
-        super().__init__(parent)
+class HeadlessRunnerClient:
+    def __init__(
+        self,
+        *,
+        on_log: LogFn | None = None,
+        on_status: StatusFn | None = None,
+    ) -> None:
+        self._on_log = on_log
+        self._on_status = on_status
         self._proc: subprocess.Popen | None = None
         self._runner_pid: int | None = None
         self._sock: socket.socket | None = None
@@ -106,7 +57,6 @@ class RunnerClient(QObject):
         elevate: bool = True,
         ready_timeout: float = 60.0,
     ) -> None:
-        """Bind, launch runner, block until ready or raise."""
         self.stop_session(send_stop=False)
         listener, port = serve_once()
         self._listener = listener
@@ -143,7 +93,7 @@ class RunnerClient(QObject):
         self._alive = True
         self._ready = False
         self._reader = threading.Thread(
-            target=self._read_loop, name="runner-client-read", daemon=True
+            target=self._read_loop, name="web-runner-read", daemon=True
         )
         self._reader.start()
 
@@ -169,20 +119,15 @@ class RunnerClient(QObject):
                     if isinstance(pid, int) and pid > 0:
                         self._runner_pid = pid
                     self._ready = True
-                    self.ready.emit()
                 elif typ == "log":
-                    self.log_message.emit(str(msg.get("text") or ""))
+                    if self._on_log:
+                        self._on_log(str(msg.get("text") or ""))
                 elif typ == "status":
                     payload = {k: v for k, v in msg.items() if k != "type"}
-                    self.status_payload.emit(payload)
-                elif typ == "error":
-                    self.failed.emit(str(msg.get("text") or "Runner error"))
-                elif typ == "exited":
-                    code = int(msg.get("code") or 0)
-                    self.exited.emit(code)
+                    if self._on_status:
+                        self._on_status(payload)
+                elif typ in ("error", "exited"):
                     break
-                elif typ == "pong":
-                    pass
         except OSError:
             pass
         finally:
@@ -208,9 +153,6 @@ class RunnerClient(QObject):
     def send_stop(self) -> None:
         self._send(cmd_stop())
 
-    def send_ping(self) -> None:
-        self._send(cmd_ping())
-
     def send_set_runtime(self, fields: dict[str, Any]) -> None:
         self._send(cmd_set_runtime(fields))
 
@@ -228,24 +170,19 @@ class RunnerClient(QObject):
             except Exception:
                 pass
             return
-        # UAC / ShellExecute path: no Popen handle — use PID from ready event.
         pid = self._runner_pid
         if pid is None:
             return
         deadline = time.time() + 2.0
-        while _pid_running(pid) and time.time() < deadline:
+        while pid_running(pid) and time.time() < deadline:
             time.sleep(0.05)
-        if _pid_running(pid):
-            _terminate_pid(pid)
-            deadline = time.time() + 1.0
-            while _pid_running(pid) and time.time() < deadline:
-                time.sleep(0.05)
+        if pid_running(pid):
+            terminate_pid(pid)
         self._runner_pid = None
 
     def stop_session(self, *, send_stop: bool = True) -> None:
         if send_stop and self._alive:
             self.send_stop()
-            # Wait briefly for clean exit
             deadline = time.time() + 3.0
             while self._alive and time.time() < deadline:
                 time.sleep(0.05)
@@ -258,11 +195,4 @@ class RunnerClient(QObject):
                 sock.close()
             except OSError:
                 pass
-        # Closing the socket also makes the Runner leave its read loop / finally.
         self._kill_proc()
-        if self._listener is not None:
-            try:
-                self._listener.close()
-            except OSError:
-                pass
-            self._listener = None

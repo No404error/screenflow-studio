@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.page_helpers import make_page
 from screenflow.models import ActionStep, PageDef, Project, RuntimeConfig, ScoreSpec, StateNode
 from screenflow.project import ProjectLoadError, load_project, save_project
 
@@ -134,9 +135,7 @@ def test_roundtrip_tree():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         proj = _blank(root)
-        proj.pages["p"] = PageDef(
-            page_id="p",
-            detect_relpath="pages/p/features/main.png",
+        proj.pages["p"] = make_page("p", detect="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="leaf",
@@ -157,9 +156,7 @@ def test_invert_score_roundtrip():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         proj = _blank(root)
-        proj.pages["p"] = PageDef(
-            page_id="p",
-            detect_relpath="pages/p/features/main.png",
+        proj.pages["p"] = make_page("p", detect="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="inv",
@@ -168,8 +165,7 @@ def test_invert_score_roundtrip():
                         kind="invert",
                         key="gone",
                         
-                        roi=[0.1, 0.9, 0.1, 0.9],
-                    ),
+                        roi=[0.1, 0.9, 0.1, 0.9]),
                     actions=[],
                 )
             ],
@@ -190,9 +186,7 @@ def test_decide_params_on_close_roundtrip():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         proj = _blank(root)
-        proj.pages["p"] = PageDef(
-            page_id="p",
-            detect_relpath="pages/p/features/main.png",
+        proj.pages["p"] = make_page("p", detect="pages/p/features/main.png",
             decide_params=DecideParams(margin=0.05, on_close="abstain"),
             state_tree=[StateNode(id="DEFAULT", is_else=True, actions=[])],
         )

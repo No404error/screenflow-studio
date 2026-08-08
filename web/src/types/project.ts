@@ -47,20 +47,57 @@ export interface StateNode {
   when_var?: string | null
 }
 
+/** Template library file (pixels only — no search ROI). */
 export interface PageAsset {
   name: string
   relpath: string
-  roi?: number[] | null
+}
+
+/**
+ * Match setup (Visual): search area + template.
+ * Lives on the page; features select via visual_id.
+ */
+export interface MatchSetup {
+  id: string
+  label: string
+  asset: string
+  template?: string
+  search_roi?: number[] | null
+  content_roi?: number[] | null
+  complete?: boolean
+}
+
+/** @deprecated Use MatchSetup */
+export type FeatureVisual = MatchSetup
+/** @deprecated Use MatchSetup */
+export type FeatureLink = MatchSetup
+
+export interface FeatureDef {
+  id: string
+  label: string
+  notes?: string
+  visual_id?: string | null
+  linked?: boolean
+  has_visual?: boolean
+  /** Resolved selected setup (API convenience). */
+  link?: MatchSetup | null
+  visual?: MatchSetup | null
 }
 
 export interface PageDoc {
   id: string
   name: string
-  detect: string
+  /** Convenience: artwork of recognize_with (from API). */
+  detect?: string
   detect_priority?: number
   pair_with?: string | null
-  features?: Record<string, string>
-  feature_rois?: Record<string, number[]>
+  recognize_with?: string | null
+  /** Full-window canvas for match-setup editing (not used at runtime). */
+  source?: string | null
+  features?: Record<string, FeatureDef>
+  /** Page-level match setups. */
+  visuals?: Record<string, MatchSetup>
+  /** Convenience ROI of recognize_with. */
   detect_roi?: number[] | null
   state_tree: StateNode[]
   decide_params?: DecideParams

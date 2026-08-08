@@ -123,25 +123,111 @@ class StateNode:
 
 
 @dataclass
+class VisualDef:
+    """
+    匹配方案 (Match setup / Visual): where to search + what template to match.
+    Page-level first-class object; features select via visual_id.
+    `asset` is the template path (JSON may also use key `template`).
+    """
+
+    id: str
+    label: str = ""
+    asset: str = ""  # template: project-relative image path
+    search_roi: list[float] | None = None  # [y0,y1,x0,x1] 0–1 screen; None = full frame
+    # Crop rect on page source (Studio overlay only; not used by matcher)
+    content_roi: list[float] | None = None
+
+    @property
+    def template(self) -> str:
+        return str(self.asset or "").strip()
+
+    def is_complete(self) -> bool:
+        return bool(self.template)
+
+
+# Back-compat aliases
+FeatureVisual = VisualDef
+FeatureLink = VisualDef
+
+
+@dataclass
+class FeatureDef:
+    """
+    画面特征 — pure logical symbol (id/label).
+    Selects at most one page-level Visual via visual_id.
+    """
+
+    id: str
+    label: str = ""
+    notes: str = ""
+    # Selected match setup id (PageDef.visuals). None = not selected.
+    visual_id: str | None = None
+
+    def display_name(self) -> str:
+        return (self.label or self.id).strip() or self.id
+
+    def is_linked(self) -> bool:
+        return bool(str(self.visual_id or "").strip())
+
+    def has_visual(self) -> bool:
+        return self.is_linked()
+
+
+@dataclass
 class PageDef:
     page_id: str
-    detect_relpath: str
     name: str = ""
     # Root of state tree (siblings = first layer)
     state_tree: list[StateNode] = field(default_factory=list)
-    # Logical name → relpath under pages/{id}/features/
-    feature_map: dict[str, str] = field(default_factory=dict)
-    # Optional search ROIs [y0, y1, x0, x1] as 0–1 of screen (None / missing = full frame).
-    detect_roi: list[float] | None = None  # main page detect image
-    feature_rois: dict[str, list[float]] = field(default_factory=dict)
+    # 画面特征 id → definition (flow references these ids)
+    features: dict[str, FeatureDef] = field(default_factory=dict)
+    # Match setups (visuals) — independent of features; may be idle or shared
+    visuals: dict[str, VisualDef] = field(default_factory=dict)
+    # Which feature is used to recognize this page (普通画面特征)
+    recognize_with: str | None = None
+    # Full-window canvas for match-setup editing (not used at runtime)
+    source: str | None = None
     pair_with: str | None = None
     detect_priority: int = 0
     decide_params: DecideParams = field(default_factory=DecideParams)
-    # Phase 2: page-level default post
     default_post: PostListen | None = None
 
     def display_name(self) -> str:
         return self.name.strip() or self.page_id
+
+    def get_feature(self, feature_id: str | None) -> FeatureDef | None:
+        if not feature_id:
+            return None
+        return self.features.get(str(feature_id))
+
+    def get_visual(self, visual_id: str | None) -> VisualDef | None:
+        if not visual_id:
+            return None
+        return self.visuals.get(str(visual_id))
+
+    def feature_visual(self, feature_id: str | None) -> VisualDef | None:
+        feat = self.get_feature(feature_id)
+        if feat is None or not feat.visual_id:
+            return None
+        return self.get_visual(feat.visual_id)
+
+    def linked_asset(self, feature_id: str | None) -> str | None:
+        vis = self.feature_visual(feature_id)
+        if vis is None:
+            return None
+        return str(vis.asset).strip() or None
+
+    def feature_search_roi(self, feature_id: str | None) -> list[float] | None:
+        vis = self.feature_visual(feature_id)
+        if vis is None:
+            return None
+        return list(vis.search_roi) if vis.search_roi else None
+
+    def recognize_asset(self) -> str | None:
+        return self.linked_asset(self.recognize_with)
+
+    def recognize_roi(self) -> list[float] | None:
+        return self.feature_search_roi(self.recognize_with)
 
 
 @dataclass

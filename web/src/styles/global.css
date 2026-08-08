@@ -47,12 +47,113 @@ a {
 .sf-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--sf-space-2);
+  min-height: var(--sf-btn-h);
   border: 1px solid var(--sf-line-strong);
   background: var(--sf-surface);
   border-radius: var(--sf-radius);
-  padding: 0.4rem 0.85rem;
+  padding: 0 0.75rem;
+  font-size: var(--sf-fs-sm);
+  line-height: 1.2;
   transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+/* Section / page headers: title left, actions right */
+.sf-btn-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sf-btn-gap);
+}
+
+/* Dense action cluster (same visual weight) */
+.sf-btn-cluster {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sf-btn-gap);
+}
+
+/* Detail panels: stacked zones with clear hierarchy */
+.sf-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sf-btn-group-gap);
+}
+.sf-actions-main,
+.sf-actions-tools,
+.sf-actions-danger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sf-btn-gap);
+}
+.sf-actions-danger {
+  padding-top: var(--sf-space-2);
+  border-top: 1px solid var(--sf-line);
+}
+.sf-actions-danger .sf-btn.danger,
+.sf-btn.danger {
+  color: var(--sf-danger);
+}
+
+/* Dialogs: secondary → cancel → primary, right-aligned */
+.sf-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sf-btn-gap);
+  margin-top: var(--sf-space-4);
+}
+.sf-dialog-foot .sf-btn-primary {
+  min-width: 5.5rem;
+}
+
+/*
+ * Stable bilingual text box: size to max(en, zh) so lang switches do not reflow.
+ * Stacks current + both locales in one grid cell; ghosts are invisible but take space.
+ */
+.sf-i18n {
+  display: inline-grid;
+  justify-items: start;
+  align-items: baseline;
+  vertical-align: baseline;
+}
+.sf-i18n-center {
+  justify-items: center;
+  text-align: center;
+}
+.sf-i18n > * {
+  grid-area: 1 / 1;
+}
+.sf-i18n-ghost {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+.sf-i18n-cur {
+  white-space: nowrap;
+}
+
+.sf-btn > .sf-i18n,
+button > .sf-i18n {
+  justify-items: center;
+  text-align: center;
+}
+
+/* Form labels: reserve max bilingual width; allow current text to wrap if needed */
+.sf-label > .sf-i18n {
+  display: grid;
+  width: max-content;
+  max-width: 100%;
+}
+.sf-label .sf-i18n-cur {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .sf-btn:hover {
@@ -88,10 +189,18 @@ a {
 .sf-select,
 .sf-textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--sf-line);
   background: var(--sf-surface);
   border-radius: var(--sf-radius);
   padding: 0.4rem 0.6rem;
+}
+
+/* Native <select> chevron eats trailing space — keep bilingual options readable */
+.sf-select {
+  padding-right: calc(0.55rem + var(--sf-select-caret));
+  text-overflow: ellipsis;
 }
 
 .sf-textarea {
@@ -103,11 +212,52 @@ a {
   display: block;
   font-size: var(--sf-fs-sm);
   color: var(--sf-ink-muted);
-  margin-bottom: var(--sf-space-1);
+  margin-bottom: 0.35rem;
+  white-space: normal;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .sf-field {
   margin-bottom: var(--sf-space-4);
+  min-width: 0;
+}
+
+/* Hint / helper under a control — keep clear air below the box */
+.sf-field > .sf-hint,
+.sf-field > small.hint {
+  display: block;
+  margin-top: 0.45rem;
+  margin-bottom: 0;
+  font-size: var(--sf-fs-xs);
+  line-height: 1.4;
+  color: var(--sf-ink-faint);
+}
+
+/* auto-fill columns sized to bilingual max; shrink only when container is narrower */
+.sf-grid-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--sf-col-field)), 1fr));
+  column-gap: var(--sf-space-3);
+  /* Extra row gap so a field’s box doesn’t sit on the next row’s label/hint */
+  row-gap: var(--sf-space-5);
+  margin-bottom: var(--sf-space-4);
+}
+
+.sf-grid-fields > .sf-field,
+.sf-grid-fields > .check,
+.sf-grid-fields > .hotkeys {
+  margin-bottom: 0;
+}
+
+.sf-field-select {
+  min-width: min(100%, var(--sf-col-select));
+}
+
+/* Long bilingual checkbox / note rows should not squeeze into a single field column */
+.sf-grid-fields > .check,
+.sf-grid-fields > .hotkeys {
+  grid-column: 1 / -1;
 }
 
 .sf-section-title {

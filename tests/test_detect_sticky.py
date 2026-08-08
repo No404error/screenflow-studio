@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from screenflow.matcher import ScreenMatcher
+from tests.page_helpers import make_page
 from screenflow.models import PageDef, Project, RuntimeConfig
 from screenflow.project import list_page_pairs, rebuild_resource_index, set_page_pair
 
@@ -28,12 +29,9 @@ def _project(root: Path, page_ids: list[str]) -> Project:
     for i, pid in enumerate(page_ids):
         rel = f"pages/{pid}/features/main.png"
         _write_pattern(root / rel, seed=100 + i)
-        pages[pid] = PageDef(
-            page_id=pid,
-            name=pid,
-            detect_relpath=rel,
-            state_tree=[],
-        )
+        pages[pid] = make_page(pid, name=pid,
+            detect=rel,
+            state_tree=[])
     p = Project(
         name="t",
         root=root,

@@ -16,7 +16,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="ScreenFlow Web Studio")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8787)
@@ -30,7 +30,7 @@ def main() -> None:
         action="store_true",
         help="Do not open a browser",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     dist = ROOT / "web" / "dist"
     serve_ui = dist.is_dir() and not args.dev
@@ -79,6 +79,7 @@ def main() -> None:
     finally:
         if vite_proc and vite_proc.poll() is None:
             vite_proc.terminate()
+    return 0
 
 
 def shutil_which(cmd: str) -> str | None:
@@ -88,4 +89,4 @@ def shutil_which(cmd: str) -> str | None:
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

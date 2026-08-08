@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tests.page_helpers import make_page
 from screenflow.models import ActionStep, PageDef, Project, RuntimeConfig, StateNode
 from screenflow.project import load_project, new_blank_project, save_project
 from studio_api.serialize import apply_full_project_dto, full_project_dto
@@ -17,9 +18,7 @@ def test_full_dto_roundtrip(tmp_path: Path) -> None:
         "armed": {"type": "bool", "description": "ready"},
         "count": {"type": "number", "description": ""},
     }
-    page = PageDef(
-        page_id="lobby",
-        detect_relpath="pages/lobby/features/main.png",
+    page = make_page("lobby", detect="pages/lobby/features/main.png",
         name="Lobby",
         state_tree=[
             StateNode(

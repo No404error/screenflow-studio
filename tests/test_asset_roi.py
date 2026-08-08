@@ -7,10 +7,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from screenflow.assets import set_asset_roi, upload_page_asset
+from screenflow.assets import add_page_feature, bind_feature, upload_page_asset
 from screenflow.decide import score_node
 from screenflow.matcher import ScreenMatcher
-from screenflow.models import PageDef, Project, RuntimeConfig, ScoreSpec, StateNode
+from screenflow.models import Project, RuntimeConfig, ScoreSpec, StateNode
 from screenflow.project import page_to_dict, rebuild_resource_index, _page_from_json
 from screenflow.roi import (
     effective_roi,
@@ -18,6 +18,7 @@ from screenflow.roi import (
     normalize_roi,
     roi_from_pixel_rect,
 )
+from tests.page_helpers import make_page
 
 
 def _write_pattern(path: Path, seed: int, size: int = 64) -> None:
@@ -57,10 +58,14 @@ def test_expand_roi_for_search_pads():
 
 
 def test_page_roi_roundtrip_json():
-    page = PageDef(
-        page_id="p",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page(
+        "p",
+        detect="pages/p/features/main.png",
         detect_roi=[0.1, 0.4, 0.2, 0.5],
+        features={
+            "icon": "pages/p/features/icon.png",
+            "btn": "pages/p/features/btn.png",
+        },
         feature_rois={
             "main": [0.1, 0.4, 0.2, 0.5],
             "icon": [0.7, 0.9, 0.7, 0.9],
@@ -68,13 +73,15 @@ def test_page_roi_roundtrip_json():
         },
     )
     raw = page_to_dict(page)
-    assert raw["detect_roi"][0] == 0.1
-    assert "icon" in raw["feature_rois"]
-    assert "btn" in raw["feature_rois"]
+    assert raw["recognize_with"] == "main"
+    assert raw["features"]["main"]["visual_id"] == "main"
+    assert raw["visuals"]["main"]["search_roi"][0] == 0.1
+    assert raw["visuals"]["icon"]["search_roi"] == [0.7, 0.9, 0.7, 0.9]
+    assert raw["visuals"]["btn"]["search_roi"] == [0.8, 0.95, 0.1, 0.3]
     back = _page_from_json(raw)
-    assert back.detect_roi == [0.1, 0.4, 0.2, 0.5]
-    assert back.feature_rois["icon"] == [0.7, 0.9, 0.7, 0.9]
-    assert back.feature_rois["btn"] == [0.8, 0.95, 0.1, 0.3]
+    assert back.recognize_roi() == [0.1, 0.4, 0.2, 0.5]
+    assert back.feature_search_roi("icon") == [0.7, 0.9, 0.7, 0.9]
+    assert back.feature_search_roi("btn") == [0.8, 0.95, 0.1, 0.3]
 
 
 def test_legacy_page_json_without_roi():
@@ -86,8 +93,11 @@ def test_legacy_page_json_without_roi():
             "state_tree": [],
         }
     )
-    assert back.detect_roi is None
-    assert back.feature_rois == {}
+    assert back.recognize_with == "main"
+    assert back.recognize_roi() is None
+    vis = back.feature_visual("main")
+    assert vis is not None
+    assert vis.search_roi is None
 
 
 def _textured_patch(seed: int, size: int = 20) -> np.ndarray:
@@ -106,9 +116,9 @@ def test_page_detect_uses_roi(tmp_path: Path):
     feat.mkdir(parents=True)
     cv2.imwrite(str(feat / "main.png"), patch)
 
-    page = PageDef(
-        page_id="a",
-        detect_relpath="pages/a/features/main.png",
+    page = make_page(
+        "a",
+        detect="pages/a/features/main.png",
         detect_roi=[0.7, 0.9, 0.7, 0.9],
         feature_rois={"main": [0.7, 0.9, 0.7, 0.9]},
         state_tree=[],
@@ -144,9 +154,9 @@ def test_tight_roi_still_matches_with_jitter(tmp_path: Path):
     feat.mkdir(parents=True)
     cv2.imwrite(str(feat / "main.png"), patch)
 
-    page = PageDef(
-        page_id="a",
-        detect_relpath="pages/a/features/main.png",
+    page = make_page(
+        "a",
+        detect="pages/a/features/main.png",
         detect_roi=[0.7, 0.9, 0.7, 0.9],
         feature_rois={"main": [0.7, 0.9, 0.7, 0.9]},
         state_tree=[],
@@ -176,11 +186,11 @@ def test_state_score_uses_asset_roi_and_override(tmp_path: Path):
     cv2.imwrite(str(feat / "icon.png"), patch)
     _write_pattern(tmp_path / "pages" / "p" / "features" / "main.png", seed=1)
 
-    page = PageDef(
-        page_id="p",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page(
+        "p",
+        detect="pages/p/features/main.png",
         feature_rois={"icon": [0.6, 0.85, 0.6, 0.85]},
-        feature_map={
+        features={
             "icon": "pages/p/features/icon.png",
             "main": "pages/p/features/main.png",
         },
@@ -214,14 +224,10 @@ def test_state_score_uses_asset_roi_and_override(tmp_path: Path):
     assert conf2 < 0.5
 
 
-def test_upload_stores_roi(tmp_path: Path):
+def test_upload_then_bind_stores_roi(tmp_path: Path):
     src = tmp_path / "cap.png"
     _write_pattern(src, seed=3, size=40)
-    page = PageDef(
-        page_id="p",
-        detect_relpath="pages/p/features/main.png",
-        state_tree=[],
-    )
+    page = make_page("p", detect="pages/p/features/main.png", state_tree=[])
     project = Project(
         name="t",
         root=tmp_path,
@@ -234,9 +240,109 @@ def test_upload_stores_roi(tmp_path: Path):
         "p",
         src,
         preferred_name="mark",
-        roi=[0.2, 0.5, 0.2, 0.5],
     )
-    assert asset.roi == [0.2, 0.5, 0.2, 0.5]
-    assert page.feature_rois["mark"] == [0.2, 0.5, 0.2, 0.5]
-    set_asset_roi(page, "mark", None)
-    assert "mark" not in page.feature_rois
+    feat = add_page_feature(page, label="mark", feature_id="mark")
+    bind_feature(page, feat.id, asset.relpath, search_roi=[0.2, 0.5, 0.2, 0.5])
+    assert page.feature_search_roi("mark") == [0.2, 0.5, 0.2, 0.5]
+    bind_feature(page, feat.id, asset.relpath, search_roi=None)
+    assert page.feature_search_roi("mark") is None
+
+
+def test_rename_feature_id_rewrites_refs(tmp_path: Path):
+    from screenflow.assets import rename_page_feature
+    from screenflow.models import ActionStep, ScoreSpec, StateNode
+
+    page = make_page(
+        "p",
+        detect="pages/p/features/main.png",
+        features={"btn": "pages/p/features/btn.png"},
+        state_tree=[
+            StateNode(
+                id="c1",
+                name="hit",
+                score=ScoreSpec(kind="template", key="btn"),
+                actions=[ActionStep(op="click", target="btn")],
+            )
+        ],
+        recognize_with="btn",
+    )
+    project = Project(
+        name="t",
+        root=tmp_path,
+        runtime=RuntimeConfig(),
+        pages={"p": page},
+        feature_files={},
+    )
+    rename_page_feature(page, "btn", "ok_btn", project=project)
+    assert "btn" not in page.features
+    assert "ok_btn" in page.features
+    assert page.features["ok_btn"].id == "ok_btn"
+    assert page.recognize_with == "ok_btn"
+    assert page.state_tree[0].score.key == "ok_btn"
+    assert page.state_tree[0].actions[0].target == "ok_btn"
+
+
+def test_page_source_and_content_roi_roundtrip(tmp_path: Path):
+    from screenflow.assets import list_page_assets, set_page_source
+    from screenflow.project import load_project, save_project
+
+    src = tmp_path / "full.png"
+    _write_pattern(src, seed=9, size=64)
+    page = make_page("p", detect="pages/p/features/main.png", state_tree=[])
+    project = Project(
+        name="t",
+        root=tmp_path,
+        runtime=RuntimeConfig(),
+        pages={"p": page},
+        feature_files={},
+    )
+    rel_source = set_page_source(project, "p", src)
+    assert rel_source == "pages/p/source.png"
+    assert (tmp_path / "pages" / "p" / "source.png").is_file()
+
+    asset = upload_page_asset(project, "p", src, preferred_name="mark")
+    assert not hasattr(asset, "roi")
+    feat = add_page_feature(page, label="mark", feature_id="mark")
+    assert not feat.has_visual()
+    bind_feature(
+        page,
+        feat.id,
+        asset.relpath,
+        search_roi=[0.1, 0.6, 0.1, 0.6],
+        content_roi=[0.2, 0.4, 0.2, 0.4],
+    )
+    assert feat.has_visual()
+    vis = page.feature_visual(feat.id)
+    assert vis is not None
+    assert vis.template == asset.relpath
+    # Template library entries never carry search ROI
+    for a in list_page_assets(project, "p"):
+        assert not hasattr(a, "roi")
+    save_project(project)
+
+    back = load_project(tmp_path)
+    assert back.pages["p"].source == "pages/p/source.png"
+    link = back.pages["p"].feature_visual("mark")
+    assert link is not None
+    assert link.search_roi == [0.1, 0.6, 0.1, 0.6]
+    assert link.content_roi == [0.2, 0.4, 0.2, 0.4]
+
+    # Updating search_roi alone keeps content_roi
+    bind_feature(back.pages["p"], "mark", link.asset, search_roi=[0.0, 0.5, 0.0, 0.5])
+    assert back.pages["p"].feature_visual("mark").content_roi == [0.2, 0.4, 0.2, 0.4]
+
+
+def test_feature_visual_load_accepts_template_key():
+    from screenflow.models import FeatureVisual
+    from screenflow.project import _feature_link_from_json
+
+    visual = _feature_link_from_json(
+        {
+            "template": "pages/p/features/a.png",
+            "search_roi": [0.1, 0.2, 0.3, 0.4],
+        }
+    )
+    assert isinstance(visual, FeatureVisual)
+    assert visual.asset == "pages/p/features/a.png"
+    assert visual.template == "pages/p/features/a.png"
+    assert visual.search_roi == [0.1, 0.2, 0.3, 0.4]

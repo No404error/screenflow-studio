@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from tests.page_helpers import make_page
 from screenflow.models import PageDef, Project, RuntimeConfig
 from screenflow.project import (
     clear_pairs_involving,
@@ -10,7 +11,7 @@ from screenflow.project import (
 
 def _proj(*ids: str) -> Project:
     pages = {
-        i: PageDef(page_id=i, name=i, detect_relpath=f"{i}.png") for i in ids
+        i: make_page(i, name=i, detect=f"{i}.png") for i in ids
     }
     return Project(
         name="t",

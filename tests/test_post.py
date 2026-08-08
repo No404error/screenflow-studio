@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 
+from tests.page_helpers import make_page
 from screenflow.models import (
     ActionStep,
     MatchResult,
@@ -16,7 +17,7 @@ from screenflow.models import (
 )
 from screenflow.post import StickyPost, run_post_listen
 from screenflow.validate import validate_project_structure
-from studio.i18n import I18n
+from studio_api.i18n import I18n
 
 
 def _proj(**kwargs):
@@ -162,9 +163,7 @@ def test_validate_until_page_allows_empty_tree():
 
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        page = PageDef(
-            page_id="p",
-            detect_relpath="x.png",
+        page = make_page("p", detect="x.png",
             state_tree=[
                 StateNode(
                     id="a",
@@ -279,9 +278,7 @@ def test_validate_post_empty_and_until_case():
 
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        page = PageDef(
-            page_id="p",
-            detect_relpath="x.png",
+        page = make_page("p", detect="x.png",
             state_tree=[
                 StateNode(
                     id="a",
@@ -324,18 +321,15 @@ def test_engine_settle_before_first_post(tmp_path):
             StateNode(id="e", name="E", is_else=True, actions=[]),
         ],
     )
-    page = PageDef(
-        page_id="p",
-        name="Page",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page("p", name="Page",
+        detect="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
                 name="Main",
                 is_else=True,
                 actions=[],
-                post=post,
-            )
+                post=post)
         ],
     )
     project = Project(

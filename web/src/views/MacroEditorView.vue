@@ -5,6 +5,7 @@ import { useUiStore } from '@/stores/ui'
 import { useProjectStore } from '@/stores/project'
 import StepsEditor from '@/components/StepsEditor.vue'
 import BindingsStrip from '@/components/BindingsStrip.vue'
+import SectionTitle from '@/components/SectionTitle.vue'
 
 const { t } = useI18n()
 const ui = useUiStore()
@@ -34,7 +35,7 @@ function mark() {
 
 async function remove() {
   if (!macro.value) return
-  if (!confirm(`Delete macro ${macro.value.name}?`)) return
+  if (!confirm(t('confirm_delete_macro', { name: macro.value.name || macro.value.id }))) return
   await project.removeMacro(macro.value.id)
 }
 </script>
@@ -43,13 +44,14 @@ async function remove() {
   <div v-if="macro" class="macro">
     <header class="head">
       <div>
+        <SectionTitle title-key="sec_macros" help-key="help_macros" />
         <h2>{{ macro.name || macro.id }}</h2>
         <p class="sf-mono">{{ macro.id }}</p>
       </div>
-      <button class="sf-btn sf-btn-danger" type="button" @click="remove">{{ t('delete') }}</button>
+      <button class="sf-btn sf-btn-danger" type="button" @click="remove"><I18nText k="delete" /></button>
     </header>
     <label class="sf-field">
-      <span class="sf-label">{{ t('name') }}</span>
+      <span class="sf-label"><I18nText k="name" /></span>
       <input v-model="macro.name" class="sf-input" @input="mark" />
     </label>
     <BindingsStrip :steps="macro.steps" />

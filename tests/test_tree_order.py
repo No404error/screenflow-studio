@@ -1,7 +1,7 @@
 """Sibling order drives priority; ELSE sinks to bottom."""
 
 from screenflow.models import ActionStep, ScoreSpec, StateNode
-from studio.state_tree_ui import (
+from screenflow.tree_order import (
     normalize_sibling_order,
     normalize_tree,
     order_tree_from_priority,

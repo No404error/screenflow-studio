@@ -11,6 +11,7 @@ import numpy as np
 
 from screenflow.engine import FlowEngine
 from screenflow.matcher import ScreenMatcher
+from tests.page_helpers import make_page
 from screenflow.models import (
     ActionStep,
     EngineStatus,
@@ -39,7 +40,7 @@ def test_detect_page_commit_sticky_false(tmp_path: Path):
             match_threshold=0.5, ref_width=16, ref_height=16
         ),
         pages={
-            "a": PageDef(page_id="a", detect_relpath=rel, state_tree=[]),
+            "a": make_page("a", detect=rel, state_tree=[]),
         },
         feature_files={},
     )
@@ -68,9 +69,7 @@ def test_loop_exception_auto_pauses(tmp_path: Path):
             ref_height=16,
         ),
         pages={
-            "a": PageDef(
-                page_id="a",
-                detect_relpath=rel,
+            "a": make_page("a", detect=rel,
                 state_tree=[StateNode(id="e", is_else=True, actions=[])],
             ),
         },
@@ -105,9 +104,7 @@ def test_dispatch_broken_macro_does_not_arm_post(tmp_path: Path):
             match_threshold=0.5, ref_width=16, ref_height=16
         ),
         pages={
-            "a": PageDef(
-                page_id="a",
-                detect_relpath=rel,
+            "a": make_page("a", detect=rel,
                 state_tree=[
                     StateNode(
                         id="leaf",

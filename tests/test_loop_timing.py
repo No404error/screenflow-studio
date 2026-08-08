@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from screenflow.engine import FlowEngine
+from tests.page_helpers import make_page
 from screenflow.models import (
     EngineStatus,
     MatchResult,
@@ -33,12 +34,9 @@ def _project(root: Path, *, poll: float, verbose: bool = False) -> Project:
     from screenflow.project import rebuild_resource_index
 
     pages = {
-        "p": PageDef(
-            page_id="p",
-            name="Page",
-            detect_relpath="pages/p/features/main.png",
-            state_tree=[],
-        )
+        "p": make_page("p", name="Page",
+            detect="pages/p/features/main.png",
+            state_tree=[])
     }
     p = Project(
         name="t",

@@ -50,7 +50,9 @@ function goVars() {
       :class="{ warn: !declared.has(it.name) }"
       @click="goVars"
     >
-      <span class="kind">{{ it.kind }}</span>
+      <span class="kind">{{
+        it.kind === 'when' ? t('bind_when') : it.kind === 'set' ? t('bind_set') : t('bind_clear')
+      }}</span>
       {{ it.name }}
     </button>
   </div>

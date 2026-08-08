@@ -32,4 +32,23 @@ def test_health_and_open_save(tmp_path: Path) -> None:
 
     r3 = client.post("/api/validate")
     assert r3.status_code == 200
-    assert r3.json()["ok"] is False  # no pages
+    body = r3.json()
+    assert body["ok"] is False  # no pages
+    assert "errors" in body and "warnings" in body
+
+    r4 = client.get("/api/templates")
+    assert r4.status_code == 200
+    assert r4.json()["templates"] == []
+
+    r5 = client.post(
+        "/api/templates",
+        json={"name": "demo", "tree": [{"id": "c1", "name": "A", "score": {"kind": "constant", "constant": 1}}]},
+    )
+    assert r5.status_code == 200
+    r6 = client.get("/api/templates/demo")
+    assert r6.status_code == 200
+    assert len(r6.json()["tree"]) == 1
+
+    r7 = client.patch("/api/settings", json={"runner_mode": "inline"})
+    assert r7.status_code == 200
+    assert r7.json()["runner_mode"] == "inline"

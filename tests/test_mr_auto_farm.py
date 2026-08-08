@@ -1,14 +1,20 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from screenflow.decide import decide_page_state
 from screenflow.project import load_project, merge_decide_params
 from screenflow.validate import validate_for_start
-from studio.i18n import I18n
+from studio_api.i18n import I18n
 
 
 MR = Path(__file__).resolve().parents[2] / "mr-auto-farm"
+
+pytestmark = pytest.mark.skipif(
+    not (MR / "project.json").is_file(),
+    reason="mr-auto-farm fixture project not present",
+)
 
 
 class _FakeMatcher:

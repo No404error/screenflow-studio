@@ -2,7 +2,7 @@
 
 from screenflow.models import ActionStep
 from screenflow.project import _steps_from_json, _steps_to_json
-from studio.steps_editor import ADVANCED_OPS, COMMON_OPS, OPS
+from screenflow.action_ops import ADVANCED_OPS, COMMON_OPS, OPS
 
 
 def test_ops_split_common_and_advanced():

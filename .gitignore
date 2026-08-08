@@ -19,3 +19,6 @@ web/dist/
 .screenflow_ui.json.migrated
 .DS_Store
 Thumbs.db
+
+# Local design notes (not versioned)
+docs/local/

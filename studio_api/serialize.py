@@ -17,6 +17,39 @@ from screenflow.project import (
 )
 
 
+def _visual_dto(vis) -> dict[str, Any]:
+    return {
+        "id": vis.id,
+        "label": vis.label or vis.id,
+        "asset": vis.asset,
+        "template": vis.asset,
+        "search_roi": list(vis.search_roi) if vis.search_roi else None,
+        "content_roi": list(vis.content_roi) if vis.content_roi else None,
+        "complete": vis.is_complete(),
+    }
+
+
+def _feature_dto(page, feat) -> dict[str, Any]:
+    """Feature + selected Visual (via visual_id)."""
+    vis = page.feature_visual(feat.id)
+    out: dict[str, Any] = {
+        "id": feat.id,
+        "label": feat.label or feat.id,
+        "notes": feat.notes or "",
+        "visual_id": feat.visual_id,
+        "linked": feat.is_linked() and vis is not None and vis.is_complete(),
+        "has_visual": feat.has_visual() and vis is not None,
+    }
+    if vis and vis.asset:
+        payload = _visual_dto(vis)
+        out["link"] = payload  # back-compat for older UI fields
+        out["visual"] = payload
+    else:
+        out["link"] = None
+        out["visual"] = None
+    return out
+
+
 def full_project_dto(project: Project) -> dict[str, Any]:
     """Snapshot suitable for the Vue editor (root meta + embedded pages)."""
     root = project_to_dict(project)
@@ -24,8 +57,12 @@ def full_project_dto(project: Project) -> dict[str, Any]:
     for pid, page in project.pages.items():
         sync_page_asset_maps(project, page)
         doc = page_to_dict(page)
+        doc["detect"] = page.recognize_asset() or ""
+        doc["detect_roi"] = page.recognize_roi()
+        doc["visuals"] = {vid: _visual_dto(v) for vid, v in page.visuals.items()}
+        doc["features"] = {fid: _feature_dto(page, f) for fid, f in page.features.items()}
         doc["assets"] = [
-            {"name": a.name, "relpath": a.relpath, "roi": a.roi}
+            {"name": a.name, "relpath": a.relpath}
             for a in list_page_assets(project, pid)
         ]
         pages[pid] = doc
@@ -44,7 +81,6 @@ def apply_full_project_dto(project: Project, data: dict[str, Any]) -> Project:
 
     page_docs = data.get("page_docs") or {}
     pages: dict[str, Any] = {}
-    # Prefer page_docs keys; fall back to pages id list
     page_ids: list[str]
     if isinstance(page_docs, dict) and page_docs:
         page_ids = list(page_docs.keys())
@@ -55,7 +91,6 @@ def apply_full_project_dto(project: Project, data: dict[str, Any]) -> Project:
     for pid in page_ids:
         raw = page_docs.get(pid) if isinstance(page_docs, dict) else None
         if not isinstance(raw, dict):
-            # Keep existing page if DTO omitted body
             if pid in project.pages:
                 pages[pid] = project.pages[pid]
             continue

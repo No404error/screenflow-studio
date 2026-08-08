@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec — ScreenFlow (windowed onefile)."""
+"""PyInstaller spec — ScreenFlow Web Studio + engine runner (windowed onefile)."""
 
 from pathlib import Path
 
@@ -11,7 +11,15 @@ block_cipher = None
 
 datas = []
 binaries = []
-hiddenimports = collect_submodules("screenflow") + collect_submodules("studio")
+hiddenimports = (
+    collect_submodules("screenflow")
+    + collect_submodules("studio_api")
+)
+
+# Bundle built Web UI when present (run npm run build in web/ first).
+web_dist = ROOT / "web" / "dist"
+if web_dist.is_dir():
+    datas.append((str(web_dist), "web/dist"))
 
 for pkg in ("cv2", "mss"):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
@@ -19,13 +27,13 @@ for pkg in ("cv2", "mss"):
     binaries += pkg_binaries
     hiddenimports += pkg_hidden
 
-# Host env may have PyQt5 installed; freeze must stay on PySide6 only.
 excludes = [
     "pytest",
     "unittest",
     "PyQt5",
     "PyQt6",
     "PySide2",
+    "PySide6",
     "tkinter",
     "_tkinter",
     "matplotlib",

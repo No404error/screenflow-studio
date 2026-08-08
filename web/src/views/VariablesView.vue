@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from '@/i18n'
-import SectionHelp from '@/components/SectionHelp.vue'
+import SectionTitle from '@/components/SectionTitle.vue'
 import { useProjectStore } from '@/stores/project'
 import { useUiStore } from '@/stores/ui'
 import { coerceDefault, inferType } from '@/utils/vars'
@@ -66,7 +66,7 @@ function rename(oldName: string, newName: string) {
   newName = newName.trim()
   if (!newName || newName === oldName) return
   if (p.vars![newName] !== undefined) {
-    alert('Name exists')
+    alert(t('err_var_dup'))
     return
   }
   p.vars![newName] = p.vars![oldName]
@@ -149,28 +149,26 @@ function jumpRef(name: string) {
   <div v-if="project.project" class="vars">
     <header class="head">
       <div>
-        <h2>{{ t('variables') }}</h2>
-        <p class="sub">
-          {{ t('help_vars') }}
-          <SectionHelp :text="t('help_vars')" />
-        </p>
+        <SectionTitle title-key="sec_vars" help-key="help_vars" />
       </div>
-      <button class="sf-btn sf-btn-primary" type="button" @click="addRow">+ {{ t('variables') }}</button>
+      <div class="sf-btn-bar">
+        <button class="sf-btn sf-btn-primary" type="button" @click="addRow"><I18nText k="add_variable" /></button>
+      </div>
     </header>
 
     <p v-if="project.undeclared.length" class="warn-banner">
-      {{ t('undeclared') }}:
+      <I18nText k="undeclared" />:
       <code v-for="u in [...new Set(project.undeclared.map((x) => x.name))]" :key="u">{{ u }}</code>
     </p>
 
     <table>
       <thead>
         <tr>
-          <th>{{ t('name') }}</th>
-          <th>{{ t('type') }}</th>
-          <th>{{ t('default') }}</th>
-          <th>{{ t('description') }}</th>
-          <th>{{ t('refs') }}</th>
+          <th><I18nText k="name" /></th>
+          <th><I18nText k="type" /></th>
+          <th><I18nText k="default" /></th>
+          <th><I18nText k="description" /></th>
+          <th><I18nText k="refs" /></th>
           <th></th>
         </tr>
       </thead>
@@ -185,9 +183,9 @@ function jumpRef(name: string) {
           </td>
           <td>
             <select class="sf-select" :value="r.type" @change="setType(r.name, ($event.target as HTMLSelectElement).value as any)">
-              <option value="bool">bool</option>
-              <option value="number">number</option>
-              <option value="string">string</option>
+              <option value="bool">{{ t('type_bool') }}</option>
+              <option value="number">{{ t('type_number') }}</option>
+              <option value="string">{{ t('type_string') }}</option>
             </select>
           </td>
           <td>
@@ -213,7 +211,7 @@ function jumpRef(name: string) {
         </tr>
       </tbody>
     </table>
-    <p v-if="!rows.length" class="sf-empty">{{ t('help_vars') }}</p>
+    <p v-if="!rows.length" class="sf-empty"><I18nText k="empty_vars" /></p>
   </div>
 </template>
 
@@ -224,14 +222,11 @@ function jumpRef(name: string) {
   align-items: flex-start;
   margin-bottom: var(--sf-space-4);
 }
-h2 {
-  margin: 0;
+.head :deep(.title) {
   font-size: var(--sf-fs-xl);
-}
-.sub {
-  margin: 0.35rem 0 0;
-  color: var(--sf-ink-muted);
-  font-size: var(--sf-fs-sm);
+  text-transform: none;
+  letter-spacing: -0.02em;
+  color: var(--sf-ink);
 }
 .warn-banner {
   background: var(--sf-warn-soft);

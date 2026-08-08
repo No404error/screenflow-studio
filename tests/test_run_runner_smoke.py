@@ -12,6 +12,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from tests.page_helpers import make_page
 from screenflow.models import PageDef, Project, RuntimeConfig, StateNode
 from screenflow.project import save_project
 from screenflow.runner_ipc import iter_messages, send_msg, serve_once
@@ -22,16 +23,13 @@ RUNNER = ROOT / "run_runner.py"
 
 
 def _minimal_project(root: Path) -> None:
-    page = PageDef(
-        page_id="p",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page("p", detect="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="else",
                 name="Other",
                 is_else=True,
-                actions=[],
-            )
+                actions=[])
         ],
     )
     det = root / "pages" / "p" / "features"

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-import studio.settings as settings
+import studio_api.settings as settings
 
 
 def test_settings_path_under_home(tmp_path, monkeypatch):
@@ -119,56 +119,4 @@ def test_runner_mode_settings(tmp_path, monkeypatch):
     assert settings.get_runner_mode() == settings.RUNNER_INLINE
 
 
-def test_studio_session_persist_and_no_reopen(tmp_path, monkeypatch):
-    from PySide6.QtWidgets import QApplication
-    import sys
 
-    monkeypatch.setattr(settings, "config_dir", lambda: tmp_path / ".screenflow")
-    monkeypatch.setattr(
-        settings, "legacy_settings_path", lambda: tmp_path / "missing.json"
-    )
-    settings.update_ui_settings(
-        reopen_last_project=False,
-        main_splitter_sizes=[300, 500, 400],
-        recent=[],
-    )
-    app = QApplication.instance() or QApplication(sys.argv)
-    from studio.app import StudioWindow
-
-    win = StudioWindow()
-    assert win.project is None
-    assert win.main_splitter is not None
-    # Qt may redistribute sizes to fit the widget; persist whatever sizes() reports.
-    win.main_splitter.setSizes([300, 500, 400])
-    actual = list(win.main_splitter.sizes())
-    win._persist_splitter_sizes()
-    assert settings.get_main_splitter_sizes() == actual
-    win._persist_window_geometry()
-    assert settings.get_window_geometry()
-    win.close()
-
-
-def test_studio_reopens_recent_project(tmp_path, monkeypatch):
-    from PySide6.QtWidgets import QApplication
-    import sys
-
-    monkeypatch.setattr(settings, "config_dir", lambda: tmp_path / ".screenflow")
-    monkeypatch.setattr(
-        settings, "legacy_settings_path", lambda: tmp_path / "missing.json"
-    )
-    proj = tmp_path / "proj"
-    from screenflow.project import new_blank_project
-
-    root = new_blank_project(proj, name="ReopenMe")
-    settings.update_ui_settings(
-        reopen_last_project=True,
-        recent=[{"path": str(root), "name": "ReopenMe"}],
-    )
-    app = QApplication.instance() or QApplication(sys.argv)
-    from studio.app import StudioWindow
-
-    win = StudioWindow()
-    assert win.project is not None
-    assert win.project.name == "ReopenMe"
-    assert win._project_root == root
-    win.close()

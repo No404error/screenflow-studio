@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest import mock
 
-from studio.elevate import ENGINE_RUNNER_FLAG, runner_launch_parts, runner_script
+from screenflow.elevate import ENGINE_RUNNER_FLAG, runner_launch_parts, runner_script
 
 
 def test_runner_launch_parts_dev(tmp_path: Path):
@@ -32,7 +32,7 @@ def test_runner_launch_parts_frozen(tmp_path: Path):
     studio.write_bytes(b"")
     project = tmp_path / "proj"
     project.mkdir()
-    with mock.patch("studio.elevate.sys") as fake_sys:
+    with mock.patch("screenflow.elevate.sys") as fake_sys:
         fake_sys.frozen = True
         fake_sys.executable = str(studio)
         exe, args, cwd = runner_launch_parts(

@@ -12,6 +12,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from tests.page_helpers import make_page
 from screenflow.models import PageDef, Project, RuntimeConfig, StateNode
 from screenflow.project import save_project
 from screenflow.runner_ipc import iter_messages, send_msg, serve_once
@@ -33,9 +34,7 @@ def test_set_runtime_acks_in_log():
                 root=root,
                 runtime=RuntimeConfig(poll_interval=0.5),
                 pages={
-                    "p": PageDef(
-                        page_id="p",
-                        detect_relpath="pages/p/features/main.png",
+                    "p": make_page("p", detect="pages/p/features/main.png",
                         state_tree=[StateNode(id="e", name="O", is_else=True)],
                     )
                 },

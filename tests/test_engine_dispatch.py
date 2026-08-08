@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from screenflow.engine import FlowEngine
+from tests.page_helpers import make_page
 from screenflow.models import (
     ActionStep,
     MatchResult,
@@ -71,10 +72,8 @@ def test_dispatch_arms_until_case_then_else_ends(project_root):
             StateNode(id="e", name="Else", is_else=True, actions=[]),
         ],
     )
-    page = PageDef(
-        page_id="p",
-        name="Page",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page("p", name="Page",
+        detect="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -117,18 +116,15 @@ def test_dispatch_once_clears_sticky_same_frame(project_root):
             )
         ],
     )
-    page = PageDef(
-        page_id="p",
-        name="Page",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page("p", name="Page",
+        detect="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
                 name="Main",
                 is_else=True,
                 actions=[],
-                post=post,
-            )
+                post=post)
         ],
     )
     eng = _engine(_project(project_root, {"p": page}))
@@ -153,18 +149,15 @@ def test_dispatch_page_change_ends_sticky(project_root):
             StateNode(id="e", name="E", is_else=True, actions=[]),
         ],
     )
-    page = PageDef(
-        page_id="p",
-        name="Page",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page("p", name="Page",
+        detect="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
                 name="Main",
                 is_else=True,
                 actions=[],
-                post=post,
-            )
+                post=post)
         ],
     )
     eng = _engine(_project(project_root, {"p": page}))
@@ -199,10 +192,8 @@ def test_post_uses_full_detect(project_root):
         )
 
     pages = {
-        "p": PageDef(
-            page_id="p",
-            name="P",
-            detect_relpath="pages/p/features/main.png",
+        "p": make_page("p", name="P",
+            detect="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="main",
@@ -219,18 +210,12 @@ def test_post_uses_full_detect(project_root):
                 )
             ],
         ),
-        "q": PageDef(
-            page_id="q",
-            name="Q",
-            detect_relpath="pages/q/features/main.png",
-            state_tree=[],
-        ),
-        "r": PageDef(
-            page_id="r",
-            name="R",
-            detect_relpath="pages/r/features/main.png",
-            state_tree=[],
-        ),
+        "q": make_page("q", name="Q",
+            detect="pages/q/features/main.png",
+            state_tree=[]),
+        "r": make_page("r", name="R",
+            detect="pages/r/features/main.png",
+            state_tree=[]),
     }
     project = Project(
         name="t",
@@ -273,10 +258,8 @@ def test_dispatch_does_not_arm_post_when_actions_fail(project_root):
         mode="until_page",
         tree=[],
     )
-    page = PageDef(
-        page_id="p",
-        name="Page",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page("p", name="Page",
+        detect="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -298,10 +281,8 @@ def test_dispatch_does_not_arm_post_when_actions_fail(project_root):
 
 def test_status_payload_marks_sticky_followup(project_root):
     payloads: list[dict] = []
-    page = PageDef(
-        page_id="p",
-        name="Page",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page("p", name="Page",
+        detect="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -333,10 +314,8 @@ def test_status_payload_marks_sticky_followup(project_root):
 
 
 def test_dispatch_arms_until_page_empty_tree(project_root):
-    page = PageDef(
-        page_id="p",
-        name="Page",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page("p", name="Page",
+        detect="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -358,10 +337,8 @@ def test_dispatch_arms_until_page_empty_tree(project_root):
 
 
 def test_default_post_fallback(project_root):
-    page = PageDef(
-        page_id="p",
-        name="Page",
-        detect_relpath="pages/p/features/main.png",
+    page = make_page("p", name="Page",
+        detect="pages/p/features/main.png",
         state_tree=[
             StateNode(id="main", name="Main", is_else=True, actions=[]),
         ],

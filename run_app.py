@@ -2,7 +2,7 @@
 """
 Unified app entry (packaged as ScreenFlow.exe).
 
-Default → Studio UI.
+Default → Web Studio (API + UI).
 With --engine-runner → elevated/plain engine child (same binary, second process).
 """
 
@@ -15,27 +15,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from studio.elevate import ENGINE_RUNNER_FLAG
-
-
-def _run_studio() -> None:
-    # Windows: importing pyautogui (via engine) calls SetProcessDPIAware and locks
-    # process DPI before QApplication. Qt then fails to set Per-Monitor V2.
-    # Neutralize only for Studio; Runner child keeps normal DPI setup.
-    if sys.platform == "win32":
-        try:
-            import ctypes
-
-            ctypes.windll.user32.SetProcessDPIAware = lambda: 1  # type: ignore[method-assign]
-            ctypes.windll.shcore.SetProcessDpiAwareness = (  # type: ignore[method-assign]
-                lambda *_a, **_k: 0
-            )
-        except Exception:
-            pass
-
-    from studio.app import run_studio
-
-    run_studio()
+from screenflow.elevate import ENGINE_RUNNER_FLAG
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -53,8 +33,10 @@ def main(argv: list[str] | None = None) -> int:
         from run_runner import main as runner_main
 
         return int(runner_main(args))
-    _run_studio()
-    return 0
+
+    from run_web_studio import main as web_main
+
+    return int(web_main(args))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from studio.settings import load_ui_settings, update_ui_settings
+from studio_api.settings import load_ui_settings, update_ui_settings
 
 # UI language codes
 LANG_EN = "en"
@@ -160,9 +160,11 @@ _STRINGS: dict[str, dict[str, str]] = {
             "Two ways to add: (1) ROI — upload a full-page screenshot, then drag a box; "
             "(2) already-cropped patch — upload a cut-out from the page and skip ROI (whole-screen search)."
         ),
-        "asset_features": "Feature pictures",
+        "asset_features": "screen features",
         "asset_detail_title": "Selected picture",
         "asset_detail_empty": "Select a picture",
+        "val_feature_unbound": "Page “{page}”: feature “{feature}” ({where}) has no linked artwork.",
+        "val_feature_unbound_unused": "Page “{page}”: unused feature “{feature}” is not linked (artwork optional until used).",
         "asset_detail_missing": "Image file missing",
         "asset_detail_name": "Name",
         "asset_detail_mode": "Search mode",
@@ -263,11 +265,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "val_title": "Cannot start",
         "val_warn_title": "Warnings",
         "val_no_pages": "Add at least one page first.",
-        "val_no_detect": "Page “{page}” has no recognition image.",
+        "val_no_detect": "Page “{page}” has no page-recognition feature with linked artwork.",
         "val_no_actions": "Page “{page}” / case “{state}” has no actions.",
+        "val_empty_tree": "(no cases)",
         "val_click_empty": "Page “{page}” / “{state}” step {step}: click target is empty.",
-        "val_click_missing": "Page “{page}” / “{state}” step {step}: click target “{target}” is not in this page’s click images.",
-        "val_macro_click_missing": "Macro “{macro}” step {step}: click target “{target}” is not in any page’s click images.",
+        "val_click_missing": "Page “{page}” / “{state}” step {step}: click target “{target}” is not a feature on this page.",
+        "val_macro_click_missing": "Macro “{macro}” step {step}: click target “{target}” is not a feature on any page.",
         "val_continue": "Start anyway",
         "val_abort": "Cancel",
 
@@ -300,20 +303,20 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_post_end_unknown": "End when page is unrecognized",
         "st_post_end_unknown_hint": "Off: skip unrecognized screens and continue observing",
         "val_post_empty": "{where}: follow-up has no cases — add at least one (not required for “Until another page”)",
-        "val_post_until_case_else": "{where}: “Until Other case (ELSE)” should include an “other case”",
+        "val_post_until_case_else": "{where}: “Until default case” should include a default case",
         "val_post_mode": "{where}: unknown follow-up mode {mode!r}",
         "val_post_settle": "{where}: wait before first observation cannot be negative",
         "st_edit_post_tree": "Edit follow-up cases…",
         "st_path": "Location: {path}",
         "st_err_branch": "This case already has actions or follow-up. Clear them before adding nested cases.",
-        "st_err_else_child": "An “other case” cannot have nested cases.",
+        "st_err_else_child": "A default case cannot have nested cases.",
         "st_err_drop_self": "Cannot move a case into one of its own nested cases.",
-        "st_err_drop_else_parent": "Cannot put cases under an “other case”.",
+        "st_err_drop_else_parent": "Cannot put cases under a default case.",
         "st_err_drop_leaf": "This case already has actions or follow-up. Clear them before nesting other cases under it.",
-        "val_else_dup": "More than one “other case” under {where}",
+        "val_else_dup": "More than one default case under {where}",
         "val_branch_actions": "“{node}” under {where} has nested cases, so it cannot have actions",
         "val_branch_post": "“{node}” under {where} has nested cases, so it cannot have follow-up",
-        "val_scoreless": "Case “{node}” under {where} needs a recognition image, or mark it as “other case”",
+        "val_scoreless": "Case “{node}” under {where} needs a recognition image, or mark it as the default case",
         "val_score_key_empty": "{where}: case “{node}” has no image selected",
         "val_score_missing": "{where}: case “{node}” image “{image}” is not in this page’s {lib}",
         "val_frames_missing": "{where}: “Fixed count” needs an observation count ≥ 1",
@@ -365,8 +368,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "sec_case_post": "Follow-up",
         "sec_steps": "Actions",
         "help_missing": "(No help text)",
-        "help_button_a11y": "Section help",
-        "help_dialog_title": "Section help",
+        "help_button_a11y": "Details",
+        "help_dialog_title": "Details",
         "help_runtime": (
             "Project-wide defaults for how often to capture the screen and how strict matching is.\n"
             "• Min. similarity — score must reach this (0–1) to count as a match; raise to reduce false matches, lower if matches are missed.\n"
@@ -391,8 +394,15 @@ _STRINGS: dict[str, dict[str, str]] = {
             "• Min. similarity — score must reach this (0–1) for a case on this page to count as a match; raise to reduce false matches, lower if matches are missed. Overrides Run for this page only.\n"
             "• Near-tie tolerance — case candidates within this distance of the best score are treated as “close”. Overrides Run for this page only.\n"
             "• Required lead — the winning case must beat the runner-up by at least this much; if not, “When cases are close” applies. Overrides Run for this page only.\n"
-            "• When cases are close — if the top two case scores fail Required lead: Choose by priority, or Do not act (route to Other case if present).\n"
-            "• Edit page default follow-up — default follow-up used when a case has none of its own."
+            "• When cases are close — if the top two case scores fail Required lead: Choose by priority, or Do not act (route to Other case if present)."
+        ),
+        "help_page_default_post": (
+            "Page-level fallback follow-up — used after a case’s actions finish when that case has no follow-up of its own.\n"
+            "This is not a matching setting: it runs after actions, watching the screen for the next UI.\n"
+            "• Enable — turn the page default on or off.\n"
+            "• Follow-up mode / Observation count / Wait before first observation — same meaning as case follow-up.\n"
+            "• Edit follow-up cases — which follow-up situations to watch for (page default).\n"
+            "A case can still override this by enabling its own Follow-up."
         ),
         "help_page_images": (
             "Feature pictures that belong only to this page — used to identify the screen, "
@@ -406,7 +416,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         ),
         "help_case_basic": (
             "One case on this page: when it wins, its actions run.\n"
-            "• Name — label shown in the list and tree.\n"
+            "• Name — label shown in the case list.\n"
             "• Other case — used when no other case matches; always stays at the bottom.\n"
             "• Recognition method — Match an image (compare a picture), Fixed similarity (advanced; use a constant score), or Match when image is absent.\n"
             "• Image name — which feature picture to use.\n"
@@ -415,22 +425,45 @@ _STRINGS: dict[str, dict[str, str]] = {
             "• Actions — ordered steps when this case is selected."
         ),
         "help_case_post": (
-            "After the main actions finish, optionally keep checking the screen for follow-up UI.\n"
-            "• Enable follow-up — turn follow-up on or off for this case.\n"
-            "• Follow-up mode — Observe once; Until another page; Until Other case (ELSE); or Fixed count.\n"
-            "  Until another page — wait until the detected page changes; the follow-up case tree may be empty. A normal (non-ELSE) follow-up case runs its actions and keeps waiting until the page changes; ELSE does not re-run actions every frame (idle wait).\n"
-            "  Until Other case (ELSE) — keep observing until the follow-up tree picks the Other-case branch; a normal case hit runs its actions and continues.\n"
+            "After the main actions finish, optionally keep checking the screen for what appears next.\n"
+            "• Enable follow-up — turn this on or off for this case.\n"
+            "• Follow-up mode — Observe once; Until another page; Until Other case; or Fixed count.\n"
+            "  Until another page — wait until a different page is recognized; you may leave follow-up cases empty. "
+            "A normal follow-up case runs its actions and keeps waiting for a page change; Other case waits without repeating actions.\n"
+            "  Until Other case — keep observing until Other case wins; a normal hit runs its actions and continues.\n"
             "• Observation count — how many observation attempts when mode is Fixed count (each attempt counts, including no-match / unrecognized-page skips).\n"
             "• Wait before first observation (s) — pause after actions so the UI can appear (e.g. 0.5).\n"
             "• End when page is unrecognized — stop follow-up if no page can be identified; Off skips those frames and continues.\n"
-            "• Edit follow-up cases — the case tree used only during follow-up."
+            "• Edit follow-up cases — which situations to watch for during follow-up only."
+        ),
+        "help_case_when": (
+            "Optional filter before this case can win.\n"
+            "• Left — variable name (from Set variable steps).\n"
+            "• Right — required value; leave empty to mean “variable is set / true”.\n"
+            "If the condition fails, this case is skipped even if its picture matches."
         ),
         "help_case_advanced": (
-            "Internal details; safe to ignore for most projects.\n"
-            "• Internal id — stable key stored in project files.\n"
-            "• Priority number — when scores are close, higher wins (dragging the list is usually enough; changing the number reorders).\n"
-            "• Only when variable condition holds — consider this case only if a flag/value was set by an earlier step (e.g. flag or mode=farm).\n"
-            "• Separate matching for nested cases — optional overrides that apply only when scoring children under this branch: Min. similarity (score floor), Near-tie tolerance (how close counts as a near tie), Required lead (how far the winner must beat #2)."
+            "Usually leave alone unless you use sub-cases or need a stable file id.\n"
+            "• Internal id — stable key in project files (renaming the case label does not change this).\n"
+            "• Separate matching for nested cases — apply only when this case has sub-cases and those sub-cases are being scored.\n"
+            "  See help next to that checkbox for each field.\n"
+            "• Priority number — when scores are close, higher wins (dragging the list is usually enough)."
+        ),
+        "help_case_layer": (
+            "These values apply only after this case wins, when choosing among its sub-cases. "
+            "They do not change how this case competes with other cases at the same level.\n"
+            "Leave a field empty to inherit: page Matching overrides → Run defaults (Controls).\n"
+            "Useful when a submenu or dialog under this case needs stricter or looser scoring than the rest of the page.\n"
+            "\n"
+            "• Internal id — stable key stored in project files; usually leave as-is.\n"
+            "• Min. similarity (0–1) — a sub-case must reach this score to count as a candidate. "
+            "Raise to reject weak matches; lower if sub-cases are often missed.\n"
+            "• Case near-tie tolerance — how close a sub-case’s score may be to the top score and still count as “close”. "
+            "When several are close, priority / “When cases are close” rules decide.\n"
+            "• Case required lead — how far the top sub-case must beat #2. "
+            "If the lead is too small, the run may skip acting, or follow page “When cases are close”.\n"
+            "\n"
+            "If this case has no sub-cases (it only runs actions), these fields do nothing until you add some."
         ),
         "help_steps": (
             "Ordered steps when this case (or macro) is chosen.\n"
@@ -614,9 +647,11 @@ _STRINGS: dict[str, dict[str, str]] = {
             "两种上传方式：（1）ROI — 上传整页/整窗截图后框选区域；"
             "（2）已裁切小图 — 上传在页面上截好的特征图块，并跳过 ROI（运行时全屏搜索）。"
         ),
-        "asset_features": "特征图",
+        "asset_features": "画面特征",
         "asset_detail_title": "当前选中",
         "asset_detail_empty": "请选择一张特征图",
+        "val_feature_unbound": "页面「{page}」：画面特征「{feature}」（{where}）尚未绑定贴图。",
+        "val_feature_unbound_unused": "页面「{page}」：未使用的画面特征「{feature}」尚未绑定贴图（使用前再绑定即可）。",
         "asset_detail_missing": "图片文件缺失",
         "asset_detail_name": "名称",
         "asset_detail_mode": "搜索方式",
@@ -715,11 +750,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "val_title": "无法开始",
         "val_warn_title": "警告",
         "val_no_pages": "请先添加至少一个页面。",
-        "val_no_detect": "页面「{page}」没有识别图。",
+        "val_no_detect": "页面「{page}」没有已绑定贴图的「用作本页识别」画面特征。",
         "val_no_actions": "页面「{page}」/ 情况「{state}」没有动作。",
+        "val_empty_tree": "（尚无情况）",
         "val_click_empty": "页面「{page}」/「{state}」第 {step} 步：点击目标为空。",
-        "val_click_missing": "页面「{page}」/「{state}」第 {step} 步：点击目标「{target}」不在该页点击图中。",
-        "val_macro_click_missing": "宏「{macro}」第 {step} 步：点击目标「{target}」不在任何页面的点击图中。",
+        "val_click_missing": "页面「{page}」/「{state}」第 {step} 步：点击目标「{target}」不是本页的画面特征。",
+        "val_macro_click_missing": "宏「{macro}」第 {step} 步：点击目标「{target}」不在任何页面的画面特征中。",
         "val_continue": "仍要开始",
         "val_abort": "取消",
 
@@ -752,20 +788,20 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_post_end_unknown": "无法识别页面时结束",
         "st_post_end_unknown_hint": "关闭：跳过无法识别的画面并继续观察",
         "val_post_empty": "「{where}」：后续观察没有情况，请至少添加一个（「直到命中其他页面」可不配情况）",
-        "val_post_until_case_else": "「{where}」：「直到命中其它情况（ELSE）」建议包含一条「其它情况」",
+        "val_post_until_case_else": "「{where}」：「直到默认情况」建议包含一条「默认情况」",
         "val_post_mode": "「{where}」：未知的后续观察模式 {mode!r}",
         "val_post_settle": "「{where}」：首次观察前等待不能为负数",
         "st_edit_post_tree": "编辑后续情况…",
         "st_path": "当前位置：{path}",
         "st_err_branch": "该情况已有动作或「后续观察」，请先清空再添加下级情况。",
-        "st_err_else_child": "「其它情况」下不能再挂下级情况。",
+        "st_err_else_child": "「默认情况」下不能再挂下级情况。",
         "st_err_drop_self": "不能把情况拖进自己的下级里。",
-        "st_err_drop_else_parent": "不能把情况挂到「其它情况」下面。",
+        "st_err_drop_else_parent": "不能把情况挂到「默认情况」下面。",
         "st_err_drop_leaf": "该情况已有动作或「后续观察」，请先清空再把其它情况拖到它下面。",
-        "val_else_dup": "「{where}」下有多条「其它情况」",
+        "val_else_dup": "「{where}」下有多条「默认情况」",
         "val_branch_actions": "「{node}」（{where}）含有下级情况，不能再挂动作",
         "val_branch_post": "「{node}」（{where}）含有下级情况，不能再挂「后续观察」",
-        "val_scoreless": "「{where}」下的情况「{node}」需要识别图，或勾选「其它情况」",
+        "val_scoreless": "「{where}」下的情况「{node}」需要识别图，或勾选「默认情况」",
         "val_score_key_empty": "「{where}」：情况「{node}」未选择图片",
         "val_score_missing": "「{where}」：情况「{node}」的图片「{image}」不在本页「{lib}」中",
         "val_frames_missing": "{where}：「固定次数」需要观察次数 ≥ 1",
@@ -817,8 +853,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "sec_case_post": "后续观察",
         "sec_steps": "动作步骤",
         "help_missing": "（暂无说明）",
-        "help_button_a11y": "本区说明",
-        "help_dialog_title": "本区说明",
+        "help_button_a11y": "详细说明",
+        "help_dialog_title": "详细说明",
         "help_runtime": (
             "项目级默认：多久截一次屏，以及匹配要多严格。\n"
             "• 最低相似度 — 达到该值（0～1）才算匹配；调高可减少误认，调低可减少漏认。\n"
@@ -843,8 +879,15 @@ _STRINGS: dict[str, dict[str, str]] = {
             "• 最低相似度 — 本页情况得分须达到该值（0～1）才算匹配；调高减少误认，调低减少漏认。在此填写后只覆盖本页，不影响其它页。\n"
             "• 相近容差 — 与最高分相差在此范围内的情况视为「接近」。在此填写后只覆盖本页。\n"
             "• 领先要求 — 第一名情况须比第二名至少高出该值；否则由下方「情况接近时」决定怎么处理。在此填写后只覆盖本页。\n"
-            "• 情况接近时 — 前两名未满足「领先要求」时：按优先级选择，或暂不执行（有「其它情况」则走其它）。\n"
-            "• 编辑本页默认后续观察 — 情况未单独配置后续观察时使用的默认项。"
+            "• 情况接近时 — 前两名未满足「领先要求」时：按优先级选择，或暂不执行（有「其它情况」则走其它）。"
+        ),
+        "help_page_default_post": (
+            "本页默认的后续观察 — 某个情况动作结束后，若该情况自己没有配置后续观察，则使用这里的设置。\n"
+            "这不是匹配参数：它在动作跑完之后才会开始，用于继续盯屏幕上的下一步界面。\n"
+            "• 启用 — 是否打开本页默认后续观察。\n"
+            "• 观察模式 / 观察次数 / 首次观察前等待 — 含义与情况里的「后续观察」相同。\n"
+            "• 编辑后续情况 — 配置本页默认要继续盯住的后续界面。\n"
+            "情况详情里仍可为单个情况单独开启「后续观察」，优先于本页默认。"
         ),
         "help_page_images": (
             "只属于本页的特征图 — 用于识别界面、给情况打分，以及动作步骤中定位点击。\n"
@@ -855,7 +898,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         ),
         "help_case_basic": (
             "本页上的一种情况：命中后执行其动作。\n"
-            "• 名称 — 列表与导航树中显示的名称。\n"
+            "• 名称 — 情况列表中显示的名称。\n"
             "• 其它情况 — 其它情况都未命中时使用；始终排在最下方。\n"
             "• 识别方式 — 匹配图片（用图片比对）、固定相似度（高级；使用恒定分数）、或图片未出现时匹配。\n"
             "• 图片名称 — 使用哪张特征图。\n"
@@ -864,22 +907,44 @@ _STRINGS: dict[str, dict[str, str]] = {
             "• 动作 — 选中本情况后按顺序执行的步骤。"
         ),
         "help_case_post": (
-            "主动作结束后，可继续检测后续界面。\n"
-            "• 启用后续观察 — 是否为本情况开启后续观察。\n"
-            "• 观察模式 — 只观察一次；直到命中其他页面；直到命中其它情况（ELSE）；或固定次数。\n"
-            "  直到命中其他页面 — 等到定到别的页面才结束；后续情况树可为空。命中普通（非 ELSE）后续情况会执行动作并继续等到换页；ELSE 不会每帧重打动作（空等换页）。\n"
-            "  直到命中其它情况（ELSE） — 持续观察直到走到「其它情况」；命中普通后续情况会执行动作并继续观察。\n"
+            "主动作结束后，可继续盯住屏幕上接下来出现的界面。\n"
+            "• 启用后续观察 — 是否为当前情况开启。\n"
+            "• 观察模式 — 观察一次；直到换页；直到其它情况；或固定次数。\n"
+            "  直到换页 — 等到识别为其它页面才结束；后续情况可以不配。"
+            "命中普通后续情况会执行动作并继续等到换页；「其它情况」在等待换页时不会反复执行动作。\n"
+            "  直到其它情况 — 持续观察直到选中「其它情况」；命中普通后续情况会执行动作并继续观察。\n"
             "• 观察次数 — 模式为「固定次数」时的观察次数（每次尝试都计数，含未命中 / 跳过无法识别页面）。\n"
             "• 首次观察前等待（秒） — 动作结束后先等待再截第一张（如 0.5）。\n"
-            "• 无法识别页面时结束 — 定不了页时结束本次后续观察；关闭则跳过并继续。\n"
-            "• 编辑后续情况 — 仅在后续观察阶段使用的情况树。"
+            "• 无法识别页面时结束 — 认不出当前页面时结束本次后续观察；关闭则跳过并继续。\n"
+            "• 编辑后续情况 — 配置后续观察阶段要识别的各种界面与动作。"
+        ),
+        "help_case_when": (
+            "可选条件：不满足则本情况不会被选中（即使图片匹配）。\n"
+            "• 左侧 — 变量名（由「设置变量」步骤写入）。\n"
+            "• 右侧 — 要求的取值；留空表示「变量已设置 / 为真」即可。"
         ),
         "help_case_advanced": (
-            "内部细节，多数项目通常无需修改。\n"
-            "• 内部编号 — 保存在项目文件中的稳定 id。\n"
-            "• 优先级数字 — 分数接近时数字大的优先（一般拖列表即可；改数字会重排）。\n"
-            "• 仅当变量条件满足 — 仅当前面步骤设置过相应标记/取值时才考虑本情况（如 flag 或 mode=farm）。\n"
-            "• 为下级情况单独设置匹配参数 — 仅在给本分支下级打分时生效的可选覆盖：最低相似度（达到才算匹配）、相近容差（与最高分差多少算接近）、领先要求（第一名须比第二名高出多少）。"
+            "多数项目通常无需修改；只有使用子情况或要固定文件编号时才用。\n"
+            "• 内部编号 — 项目文件中的稳定键（改显示名称不会自动改这里）。\n"
+            "• 为下级情况单独设置匹配参数 — 仅当本情况带有子情况、正在从中挑选时生效。\n"
+            "  各字段含义见该选项旁的说明。\n"
+            "• 优先级数字 — 分数接近时数字大的优先（一般拖列表即可）。"
+        ),
+        "help_case_layer": (
+            "这些参数只影响「本情况已经选中之后，在其子情况之间」如何挑选；"
+            "不会改变本情况与其它同级情况的竞争。\n"
+            "某一项留空则沿用：页面「匹配」覆盖 → 运行默认（控制台里的最低相似度 / 情况相近容差 / 情况领先要求）。\n"
+            "适合：本情况下的子菜单、弹层等，需要比本页其它地方更严或更松的打分时。\n"
+            "\n"
+            "• 内部编号 — 保存在项目文件中的稳定键，一般不用改。\n"
+            "• 最低相似度（0～1） — 子情况的匹配分至少达到此值才算有效候选。"
+            "调高更挑剔（减少误认）；调低更宽松（减少漏认）。\n"
+            "• 情况相近容差 — 子情况里与最高分相差不超过此值的，都算「接近」。"
+            "接近时会结合优先级、以及页面上的「情况接近时」策略再决定。\n"
+            "• 情况领先要求 — 第一名须比第二名至少高出此值。"
+            "领先不够时，可能暂不执行，或按页面「情况接近时」走默认情况等策略。\n"
+            "\n"
+            "若本情况没有子情况（只执行动作），填了这些参数也不会生效，直到添加子情况。"
         ),
         "help_steps": (
             "选中情况（或宏）后按顺序执行的步骤。\n"

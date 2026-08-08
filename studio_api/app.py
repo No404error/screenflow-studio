@@ -13,21 +13,32 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from screenflow.assets import (
+    add_page_feature,
+    add_page_visual,
+    bind_feature,
+    clear_page_source,
     delete_page_asset,
+    delete_page_feature,
+    delete_page_visual,
     ensure_page_asset_dirs,
     list_page_assets,
-    sync_page_asset_maps,
+    rename_page_feature,
+    select_feature_visual,
+    set_page_source,
+    unbind_feature,
+    update_page_visual,
     upload_page_asset,
 )
 from screenflow.project import (
     load_project,
     new_blank_project,
+    rebuild_resource_index,
     save_project,
     slugify_id,
 )
 from screenflow.models import PageDef
-from studio import settings as ui_settings
-from studio.i18n import I18n
+from studio_api import settings as ui_settings
+from studio_api.i18n import I18n
 
 from studio_api.engine_bridge import bridge
 from studio_api.serialize import (
@@ -46,6 +57,18 @@ app.add_middleware(
 )
 
 _i18n = I18n(lang="en")
+
+
+def _sync_ui_lang() -> str:
+    """Keep API translate language aligned with saved UI language (Issues / validate)."""
+    lang = (ui_settings.load_ui_settings().get("lang") or "en").strip().lower()
+    if lang not in ("en", "zh"):
+        lang = "en"
+    _i18n.lang = lang
+    return lang
+
+
+_sync_ui_lang()
 
 
 def _t(key: str, **kwargs: object) -> str:
@@ -78,12 +101,70 @@ class AddMacroBody(BaseModel):
     id: str | None = None
 
 
-class RoiBody(BaseModel):
-    roi: list[float] | None = None
+class FeatureCreateBody(BaseModel):
+    label: str = ""
+    id: str | None = None
+    notes: str = ""
+
+
+class FeaturePatchBody(BaseModel):
+    label: str | None = None
+    notes: str | None = None
+    recognize: bool | None = None
+    id: str | None = None
+
+
+class FeatureBindBody(BaseModel):
+    """Legacy: create/update a Visual from template+ROI and select it."""
+
+    asset: str
+    search_roi: list[float] | None = None
+    content_roi: list[float] | None = None
+
+
+class FeatureSelectVisualBody(BaseModel):
+    visual_id: str | None = None
+
+
+class VisualCreateBody(BaseModel):
+    template: str
+    label: str = ""
+    id: str | None = None
+    search_roi: list[float] | None = None
+    content_roi: list[float] | None = None
+
+
+class VisualPatchBody(BaseModel):
+    label: str | None = None
+    template: str | None = None
+    search_roi: list[float] | None = None
+    content_roi: list[float] | None = None
+    clear_search_roi: bool = False
+    clear_content_roi: bool = False
 
 
 class LangBody(BaseModel):
     lang: str = "en"
+
+
+class SettingsPatch(BaseModel):
+    runner_mode: str | None = None
+    reopen_last_project: bool | None = None
+
+
+class StartBody(BaseModel):
+    mode: str | None = None
+    allow_warnings: bool = False
+
+
+class FolderBody(BaseModel):
+    initial: str | None = None
+    title: str | None = None
+
+
+class TemplateSaveBody(BaseModel):
+    name: str
+    tree: list[dict[str, Any]]
 
 
 @app.get("/api/health")
@@ -107,11 +188,15 @@ def add_api_root_hint() -> None:
 @app.get("/api/settings")
 def get_settings() -> dict[str, Any]:
     data = ui_settings.load_ui_settings()
+    lang = _sync_ui_lang()
     return {
-        "lang": data.get("lang") or "en",
+        "lang": lang,
         "recent": ui_settings.get_recent(),
-        "runner_mode": data.get("runner_mode") or ui_settings.RUNNER_INLINE,
+        "runner_mode": bridge.runner_mode,
         "reopen_last_project": bool(data.get("reopen_last_project", True)),
+        "reopen_path": (
+            str(p) if (p := ui_settings.resolve_reopen_project_path()) is not None else None
+        ),
     }
 
 
@@ -121,6 +206,45 @@ def set_lang(body: LangBody) -> dict[str, str]:
     ui_settings.update_ui_settings(lang=lang)
     _i18n.lang = lang
     return {"lang": lang}
+
+
+@app.patch("/api/settings")
+def patch_settings(body: SettingsPatch) -> dict[str, Any]:
+    if body.runner_mode is not None:
+        try:
+            bridge.set_runner_mode(body.runner_mode)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    if body.reopen_last_project is not None:
+        ui_settings.set_reopen_last_project(body.reopen_last_project)
+    return get_settings()
+
+
+@app.post("/api/settings/clear-recent")
+def clear_recent() -> dict[str, Any]:
+    ui_settings.clear_recent()
+    return get_settings()
+
+
+@app.post("/api/dialog/folder")
+def pick_folder(body: FolderBody | None = None) -> dict[str, str | None]:
+    """Native folder picker (tkinter). Blocks until user chooses or cancels."""
+    import tkinter as tk
+    from tkinter import filedialog
+
+    initial = (body.initial if body else None) or str(Path.home())
+    title = (body.title if body else None) or "Select folder"
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        root.attributes("-topmost", True)
+    except Exception:
+        pass
+    try:
+        path = filedialog.askdirectory(initialdir=initial, title=title, parent=root)
+    finally:
+        root.destroy()
+    return {"path": path or None}
 
 
 @app.post("/api/project/open")
@@ -179,12 +303,11 @@ def add_page(body: AddPageBody) -> dict[str, Any]:
     pid = slugify_id(body.name, project.pages.keys())
     page = PageDef(
         page_id=pid,
-        detect_relpath=f"pages/{pid}/features/main.png",
         name=body.name.strip() or pid,
     )
     project.pages[pid] = page
     ensure_page_asset_dirs(project, pid)
-    sync_page_asset_maps(project, page)
+    rebuild_resource_index(project)
     save_project(project)
     return full_project_dto(project)
 
@@ -234,7 +357,7 @@ def page_assets(page_id: str) -> list[dict[str, Any]]:
     if page_id not in project.pages:
         raise HTTPException(404, "page not found")
     return [
-        {"name": a.name, "relpath": a.relpath, "roi": a.roi}
+        {"name": a.name, "relpath": a.relpath}
         for a in list_page_assets(project, page_id)
     ]
 
@@ -262,16 +385,51 @@ async def upload_asset(
             tmp_path,
             preferred_name=preferred_name or Path(file.filename or "asset").stem,
         )
-        # If no detect yet, use first upload as detect
-        page = project.pages[page_id]
-        detect_path = Path(project.root) / page.detect_relpath
-        if not detect_path.is_file():
-            page.detect_relpath = asset.relpath
-        sync_page_asset_maps(project, page)
         save_project(project)
     finally:
         tmp_path.unlink(missing_ok=True)
-    return {"name": asset.name, "relpath": asset.relpath, "roi": asset.roi}
+    return {"name": asset.name, "relpath": asset.relpath}
+
+
+@app.post("/api/project/pages/{page_id}/source")
+async def upload_page_source(
+    page_id: str,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Store a full-window reference screenshot for ROI overlay (not match artwork)."""
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    if page_id not in project.pages:
+        raise HTTPException(404, "page not found")
+    suffix = Path(file.filename or "source.png").suffix or ".png"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        tmp_path = Path(tmp.name)
+        content = await file.read()
+        tmp.write(content)
+    try:
+        set_page_source(project, page_id, tmp_path)
+        save_project(project)
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+    finally:
+        tmp_path.unlink(missing_ok=True)
+    return full_project_dto(project)
+
+
+@app.delete("/api/project/pages/{page_id}/source")
+def remove_page_source(page_id: str) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    if page_id not in project.pages:
+        raise HTTPException(404, "page not found")
+    try:
+        clear_page_source(project, page_id)
+        save_project(project)
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return full_project_dto(project)
 
 
 @app.delete("/api/project/pages/{page_id}/assets/{name}")
@@ -281,29 +439,207 @@ def remove_asset(page_id: str, name: str) -> dict[str, Any]:
         raise HTTPException(404, "No project open")
     try:
         delete_page_asset(project, page_id, name)
+        rebuild_resource_index(project)
         save_project(project)
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
     return full_project_dto(project)
 
 
-@app.put("/api/project/pages/{page_id}/assets/{name}/roi")
-def set_asset_roi(page_id: str, name: str, body: RoiBody) -> dict[str, Any]:
+@app.post("/api/project/pages/{page_id}/features")
+def create_feature(page_id: str, body: FeatureCreateBody) -> dict[str, Any]:
     project = bridge.project
     if project is None:
         raise HTTPException(404, "No project open")
     page = project.pages.get(page_id)
     if page is None:
         raise HTTPException(404, "page not found")
-    if body.roi is None:
-        page.feature_rois.pop(name, None)
-        if Path(page.detect_relpath).stem == name:
-            page.detect_roi = None
-    else:
-        page.feature_rois[name] = list(body.roi)
-        if Path(page.detect_relpath).stem == name:
-            page.detect_roi = list(body.roi)
-    sync_page_asset_maps(project, page)
+    try:
+        add_page_feature(
+            page,
+            label=body.label,
+            feature_id=body.id,
+            notes=body.notes,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    rebuild_resource_index(project)
+    save_project(project)
+    return full_project_dto(project)
+
+
+@app.patch("/api/project/pages/{page_id}/features/{feature_id}")
+def patch_feature(page_id: str, feature_id: str, body: FeaturePatchBody) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    page = project.pages.get(page_id)
+    if page is None or feature_id not in page.features:
+        raise HTTPException(404, "feature not found")
+    feat = page.features[feature_id]
+    if body.id is not None:
+        try:
+            feat = rename_page_feature(page, feature_id, body.id, project=project)
+        except KeyError as exc:
+            raise HTTPException(404, "feature not found") from exc
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+    if body.label is not None:
+        feat.label = body.label.strip() or feat.id
+    if body.notes is not None:
+        feat.notes = body.notes
+    if body.recognize is True:
+        page.recognize_with = feat.id
+    elif body.recognize is False and page.recognize_with == feat.id:
+        page.recognize_with = None
+    rebuild_resource_index(project)
+    save_project(project)
+    return full_project_dto(project)
+
+
+@app.delete("/api/project/pages/{page_id}/features/{feature_id}")
+def remove_feature(page_id: str, feature_id: str) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    page = project.pages.get(page_id)
+    if page is None:
+        raise HTTPException(404, "page not found")
+    if not delete_page_feature(page, feature_id):
+        raise HTTPException(404, "feature not found")
+    rebuild_resource_index(project)
+    save_project(project)
+    return full_project_dto(project)
+
+
+@app.put("/api/project/pages/{page_id}/features/{feature_id}/bind")
+def bind_feature_api(page_id: str, feature_id: str, body: FeatureBindBody) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    page = project.pages.get(page_id)
+    if page is None:
+        raise HTTPException(404, "page not found")
+    try:
+        bind_feature(
+            page,
+            feature_id,
+            body.asset,
+            search_roi=body.search_roi,
+            content_roi=body.content_roi,
+        )
+    except KeyError as exc:
+        raise HTTPException(404, "feature not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    rebuild_resource_index(project)
+    save_project(project)
+    return full_project_dto(project)
+
+
+@app.put("/api/project/pages/{page_id}/features/{feature_id}/visual")
+def select_feature_visual_api(
+    page_id: str, feature_id: str, body: FeatureSelectVisualBody
+) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    page = project.pages.get(page_id)
+    if page is None:
+        raise HTTPException(404, "page not found")
+    try:
+        select_feature_visual(page, feature_id, body.visual_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    rebuild_resource_index(project)
+    save_project(project)
+    return full_project_dto(project)
+
+
+@app.delete("/api/project/pages/{page_id}/features/{feature_id}/bind")
+def unbind_feature_api(page_id: str, feature_id: str) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    page = project.pages.get(page_id)
+    if page is None:
+        raise HTTPException(404, "page not found")
+    try:
+        unbind_feature(page, feature_id)
+    except KeyError as exc:
+        raise HTTPException(404, "feature not found") from exc
+    rebuild_resource_index(project)
+    save_project(project)
+    return full_project_dto(project)
+
+
+@app.post("/api/project/pages/{page_id}/visuals")
+def create_visual(page_id: str, body: VisualCreateBody) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    page = project.pages.get(page_id)
+    if page is None:
+        raise HTTPException(404, "page not found")
+    try:
+        add_page_visual(
+            page,
+            template=body.template,
+            label=body.label,
+            visual_id=body.id,
+            search_roi=body.search_roi,
+            content_roi=body.content_roi,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    rebuild_resource_index(project)
+    save_project(project)
+    return full_project_dto(project)
+
+
+@app.patch("/api/project/pages/{page_id}/visuals/{visual_id}")
+def patch_visual(page_id: str, visual_id: str, body: VisualPatchBody) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    page = project.pages.get(page_id)
+    if page is None:
+        raise HTTPException(404, "page not found")
+    kwargs: dict[str, Any] = {}
+    if body.label is not None:
+        kwargs["label"] = body.label
+    if body.template is not None:
+        kwargs["template"] = body.template
+    if body.clear_search_roi:
+        kwargs["search_roi"] = None
+    elif body.search_roi is not None:
+        kwargs["search_roi"] = body.search_roi
+    if body.clear_content_roi:
+        kwargs["content_roi"] = None
+    elif body.content_roi is not None:
+        kwargs["content_roi"] = body.content_roi
+    try:
+        update_page_visual(page, visual_id, **kwargs)
+    except KeyError as exc:
+        raise HTTPException(404, "visual not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    rebuild_resource_index(project)
+    save_project(project)
+    return full_project_dto(project)
+
+
+@app.delete("/api/project/pages/{page_id}/visuals/{visual_id}")
+def remove_visual(page_id: str, visual_id: str) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    page = project.pages.get(page_id)
+    if page is None:
+        raise HTTPException(404, "page not found")
+    if not delete_page_visual(page, visual_id):
+        raise HTTPException(404, "visual not found")
+    rebuild_resource_index(project)
     save_project(project)
     return full_project_dto(project)
 
@@ -324,27 +660,96 @@ def get_file(relpath: str) -> FileResponse:
 
 @app.post("/api/validate")
 def validate_project() -> dict[str, Any]:
+    _sync_ui_lang()
     issues = bridge.validate(_t)
+    serialized = [{"level": i.level, "text": i.text} for i in issues]
+    errors = [i for i in serialized if i["level"] == "error"]
+    warnings = [i for i in serialized if i["level"] == "warning"]
     return {
-        "issues": [{"level": i.level, "text": i.text} for i in issues],
-        "ok": not any(i.level == "error" for i in issues),
+        "issues": serialized,
+        "errors": errors,
+        "warnings": warnings,
+        "ok": not errors,
+        "has_warnings": bool(warnings),
     }
 
 
+@app.post("/api/project/close")
+def close_project() -> dict[str, str]:
+    bridge.set_project(None)
+    return {"status": "closed"}
+
+
+@app.get("/api/templates")
+def list_templates_api() -> dict[str, Any]:
+    from studio_api.layer_templates import list_templates
+
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    return {"templates": list_templates(project)}
+
+
+@app.post("/api/templates")
+def save_template_api(body: TemplateSaveBody) -> dict[str, Any]:
+    from screenflow.project import _node_from_json
+    from studio_api.layer_templates import save_template
+
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(400, "name required")
+    roots = [_node_from_json(n) for n in body.tree]
+    path = save_template(project, name, roots)
+    return {"ok": True, "path": str(path), "name": path.stem}
+
+
+@app.get("/api/templates/{name}")
+def load_template_api(name: str) -> dict[str, Any]:
+    from screenflow.project import _node_to_json
+    from studio_api.layer_templates import load_template
+
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    try:
+        roots = load_template(project, name)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, "template not found") from exc
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"tree": [_node_to_json(n) for n in roots]}
+
+
 @app.post("/api/engine/start")
-def engine_start() -> dict[str, Any]:
+def engine_start(body: StartBody | None = None) -> dict[str, Any]:
+    body = body or StartBody()
+    _sync_ui_lang()
     issues = bridge.validate(_t)
-    errors = [i for i in issues if i.level == "error"]
+    serialized = [{"level": i.level, "text": i.text} for i in issues]
+    errors = [i for i in serialized if i["level"] == "error"]
+    warnings = [i for i in serialized if i["level"] == "warning"]
     if errors:
         raise HTTPException(
             400,
             {
                 "message": "Validation failed",
-                "issues": [{"level": i.level, "text": i.text} for i in issues],
+                "issues": serialized,
+            },
+        )
+    if warnings and not body.allow_warnings:
+        raise HTTPException(
+            409,
+            {
+                "message": "Validation warnings",
+                "issues": serialized,
+                "warnings_only": True,
             },
         )
     try:
-        bridge.start(persist=True)
+        bridge.start(persist=True, mode=body.mode)
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
     return bridge.snapshot()

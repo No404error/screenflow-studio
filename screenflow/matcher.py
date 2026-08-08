@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import cv2
 import mss
 import numpy as np
@@ -36,21 +34,20 @@ class ScreenMatcher:
 
     def _load(self) -> None:
         for page_id, page in self.project.pages.items():
-            path = resolve_asset_path(self.project, page.detect_relpath)
-            if path.exists():
-                self.page_templates[page_id] = imread_unicode(path)
-            proi = normalize_roi(page.detect_roi)
-            if proi is None:
-                stem = Path(page.detect_relpath).stem
-                proi = normalize_roi(page.feature_rois.get(stem))
+            detect_rel = page.recognize_asset()
+            if detect_rel:
+                path = resolve_asset_path(self.project, detect_rel)
+                if path.exists():
+                    self.page_templates[page_id] = imread_unicode(path)
+            proi = normalize_roi(page.recognize_roi())
             if proi is not None:
                 self.page_rois[page_id] = proi
-            for name, raw in page.feature_rois.items():
-                nroi = normalize_roi(raw)
+            for fid in page.features:
+                nroi = normalize_roi(page.feature_search_roi(fid))
                 if nroi is None:
                     continue
-                self.feature_rois[scoped_asset_key(page_id, name)] = nroi
-                self.feature_rois.setdefault(name, nroi)
+                self.feature_rois[scoped_asset_key(page_id, fid)] = nroi
+                self.feature_rois.setdefault(fid, nroi)
 
         for key, rel in self.project.feature_files.items():
             path = resolve_asset_path(self.project, rel)
@@ -59,7 +56,7 @@ class ScreenMatcher:
 
         if not self.page_templates:
             raise RuntimeError(
-                f"No page detect images under {self.project.root / 'pages'}"
+                f"No page recognition images under {self.project.root / 'pages'}"
             )
 
     def store_roi(

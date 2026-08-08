@@ -1,48 +1,122 @@
 <script setup lang="ts">
-defineProps<{ text: string }>()
+import { computed, ref } from 'vue'
+import { useI18n } from '@/i18n'
+
+const props = defineProps<{
+  helpKey: string
+}>()
+
+const { t } = useI18n()
+const open = ref(false)
+
+const text = computed(() => {
+  const raw = t(props.helpKey)
+  return raw === props.helpKey ? t('help_missing') : raw
+})
+
+const title = computed(() => t('help_dialog_title'))
 </script>
 
 <template>
-  <details class="help">
-    <summary>?</summary>
-    <p>{{ text }}</p>
-  </details>
+  <span class="wrap">
+    <button
+      type="button"
+      class="q"
+      :title="t('help_button_a11y')"
+      :aria-label="t('help_button_a11y')"
+      @click.stop="open = true"
+    >
+      ?
+    </button>
+    <Teleport to="body">
+      <div v-if="open" class="mask" @click.self="open = false">
+        <div class="dialog sf-panel" role="dialog" :aria-label="title">
+          <header>
+            <h3>{{ title }}</h3>
+            <button type="button" class="sf-btn sf-btn-ghost" @click="open = false">×</button>
+          </header>
+          <pre class="body">{{ text }}</pre>
+          <footer>
+            <button type="button" class="sf-btn sf-btn-primary" @click="open = false">{{ t('ok') }}</button>
+          </footer>
+        </div>
+      </div>
+    </Teleport>
+  </span>
 </template>
 
 <style scoped>
-.help {
-  display: inline-block;
-  margin-left: 0.35rem;
+.wrap {
+  display: inline-flex;
   vertical-align: middle;
+  margin-left: 0.35rem;
 }
-summary {
-  list-style: none;
-  width: 1.1rem;
-  height: 1.1rem;
+.q {
+  width: 1.25rem;
+  height: 1.25rem;
   border-radius: 50%;
   border: 1px solid var(--sf-line-strong);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.7rem;
+  background: var(--sf-surface);
   color: var(--sf-ink-muted);
-  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  cursor: help;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-summary::-webkit-details-marker {
-  display: none;
+.q:hover {
+  color: var(--sf-accent);
+  border-color: var(--sf-accent);
 }
-p {
-  position: absolute;
-  z-index: 20;
-  max-width: 16rem;
-  margin: 0.35rem 0 0;
-  padding: 0.6rem 0.75rem;
-  background: var(--sf-ink);
-  color: #fff;
-  border-radius: var(--sf-radius);
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgb(26 34 32 / 45%);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+  padding: 1rem;
+}
+.dialog {
+  width: min(640px, 96vw);
+  max-height: min(85vh, 720px);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--sf-line);
+  flex-shrink: 0;
+}
+h3 {
+  margin: 0;
+  font-size: var(--sf-fs-md);
+}
+.body {
+  margin: 0;
+  padding: 1rem 1.25rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-family: var(--sf-font);
   font-size: var(--sf-fs-sm);
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
+  line-height: 1.6;
+  color: var(--sf-ink);
+}
+footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--sf-line);
+  flex-shrink: 0;
 }
 </style>

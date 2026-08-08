@@ -11,13 +11,13 @@ from screenflow.assets import (
     page_dir,
     page_json_path,
     scoped_asset_key,
-    sync_page_asset_maps,
 )
 
 PROJECT_FORMAT_VERSION = 3
 from screenflow.models import (
     ActionStep,
     DecideParams,
+    FeatureDef,
     MacroDef,
     PageDef,
     PostListen,
@@ -25,6 +25,7 @@ from screenflow.models import (
     RuntimeConfig,
     ScoreSpec,
     StateNode,
+    VisualDef,
     DEFAULT_STATE,
     normalize_post_mode,
 )
@@ -329,20 +330,27 @@ def find_node(nodes: list[StateNode], node_id: str) -> StateNode | None:
 
 
 def rebuild_resource_index(project: Project) -> None:
-    """Rebuild feature maps and pairs from page definitions (after edits)."""
+    """Rebuild linked-feature index and pairs from page definitions (after edits)."""
     feature_files: dict[str, str] = {}
     detect_priority: dict[str, int] = {}
     page_pairs: list[tuple[str, str]] = []
-    # Bare logical names: only index when unique across pages (no first-writer-wins).
+    # Bare feature ids: only index when unique across pages (no first-writer-wins).
     bare_features: dict[str, list[str]] = {}
 
     for page_id, page in project.pages.items():
         ensure_page_asset_dirs(project, page_id)
-        sync_page_asset_maps(project, page)
         detect_priority[page_id] = page.detect_priority
-        for k, rel in page.feature_map.items():
-            feature_files[scoped_asset_key(page_id, k)] = rel
-            bare_features.setdefault(k, []).append(rel)
+        for fid, feat in page.features.items():
+            if not feat.is_linked():
+                continue
+            vis = page.feature_visual(fid)
+            if vis is None:
+                continue
+            rel = str(vis.asset).replace("\\", "/").strip()
+            if not rel:
+                continue
+            feature_files[scoped_asset_key(page_id, fid)] = rel
+            bare_features.setdefault(fid, []).append(rel)
         if page.pair_with:
             a, b = page_id, page.pair_with
             pair = (a, b) if a < b else (b, a)
@@ -438,11 +446,214 @@ def _runtime_from_json(rt_raw: dict[str, Any]) -> RuntimeConfig:
     )
 
 
+def _visual_body_from_json(raw: Any) -> tuple[str, list[float] | None, list[float] | None] | None:
+    """Parse template + rois from a visual/link dict. Returns (asset, search, content)."""
+    if not isinstance(raw, dict):
+        return None
+    asset = str(raw.get("template") or raw.get("asset") or "").replace("\\", "/").strip()
+    if not asset:
+        return None
+    return asset, _roi_from_json(raw.get("search_roi")), _roi_from_json(raw.get("content_roi"))
+
+
+def _feature_link_from_json(raw: Any) -> VisualDef | None:
+    """Load a Visual body from link/visual JSON (tests + legacy)."""
+    body = _visual_body_from_json(raw)
+    if body is None:
+        return None
+    asset, sroi, croi = body
+    return VisualDef(
+        id="",
+        asset=asset,
+        search_roi=list(sroi) if sroi else None,
+        content_roi=list(croi) if croi else None,
+    )
+
+
+def _visuals_from_page_json(raw: dict[str, Any]) -> dict[str, VisualDef]:
+    visuals: dict[str, VisualDef] = {}
+    raw_vis = raw.get("visuals") or {}
+    if not isinstance(raw_vis, dict):
+        return visuals
+    for k, v in raw_vis.items():
+        vid = str(k)
+        if isinstance(v, str):
+            rel = v.replace("\\", "/").strip()
+            if rel:
+                visuals[vid] = VisualDef(id=vid, label=vid, asset=rel)
+            continue
+        if not isinstance(v, dict):
+            continue
+        body = _visual_body_from_json(v)
+        if body is None:
+            continue
+        asset, sroi, croi = body
+        id_ = str(v.get("id") or vid)
+        visuals[id_] = VisualDef(
+            id=id_,
+            label=str(v.get("label") or id_),
+            asset=asset,
+            search_roi=list(sroi) if sroi else None,
+            content_roi=list(croi) if croi else None,
+        )
+    return visuals
+
+
+def _feature_from_json(fid: str, raw: Any) -> tuple[FeatureDef, dict[str, Any] | None]:
+    """
+    Load a feature. Returns (feature, legacy_link_dict_or_None).
+    Legacy `link` / string map entries are promoted to visuals after the page is assembled.
+    """
+    if isinstance(raw, str):
+        rel = str(raw).replace("\\", "/").strip()
+        legacy = {"asset": rel} if rel else None
+        return FeatureDef(id=fid, label=fid), legacy
+    if not isinstance(raw, dict):
+        return FeatureDef(id=fid, label=fid), None
+    id_ = str(raw.get("id") or fid)
+    visual_id = str(raw["visual_id"]).strip() if raw.get("visual_id") else None
+    legacy = raw.get("link") if isinstance(raw.get("link"), dict) else None
+    return (
+        FeatureDef(
+            id=id_,
+            label=str(raw.get("label") or id_),
+            notes=str(raw.get("notes") or ""),
+            visual_id=visual_id,
+        ),
+        legacy,
+    )
+
+
+def _promote_legacy_links(
+    page: PageDef,
+    pending: dict[str, dict[str, Any]],
+    *,
+    detect_rel: str,
+    detect_roi: list[float] | None,
+) -> None:
+    """Turn feature.link / string assets into page.visuals + visual_id."""
+    for fid, link_raw in pending.items():
+        feat = page.features.get(fid)
+        if feat is None:
+            continue
+        if feat.visual_id and feat.visual_id in page.visuals:
+            continue
+        body = _visual_body_from_json(link_raw)
+        if body is None:
+            continue
+        asset, sroi, croi = body
+        if detect_rel and asset == detect_rel and detect_roi and not sroi:
+            sroi = list(detect_roi)
+        vid = feat.visual_id or fid
+        n = 2
+        while vid in page.visuals and page.visuals[vid].asset != asset:
+            vid = f"{fid}_{n}"
+            n += 1
+        if vid not in page.visuals:
+            page.visuals[vid] = VisualDef(
+                id=vid,
+                label=feat.label or vid,
+                asset=asset,
+                search_roi=list(sroi) if sroi else None,
+                content_roi=list(croi) if croi else None,
+            )
+        feat.visual_id = vid
+
+
+def _features_from_page_json(
+    raw: dict[str, Any], *, page_id: str
+) -> tuple[dict[str, FeatureDef], dict[str, dict[str, Any]], str | None]:
+    """
+    Load features + recognize_with + pending legacy links.
+    Silently upgrades legacy detect/feature_map/feature_rois pages.
+    """
+    features_raw = raw.get("features") or {}
+    legacy_rois = {
+        str(k): list(r)
+        for k, v in (raw.get("feature_rois") or {}).items()
+        if (r := _roi_from_json(v)) is not None
+    }
+    detect_rel = str(raw.get("detect") or "").replace("\\", "/").strip()
+    detect_roi = _roi_from_json(raw.get("detect_roi"))
+    recognize_with = str(raw["recognize_with"]) if raw.get("recognize_with") else None
+
+    features: dict[str, FeatureDef] = {}
+    pending_links: dict[str, dict[str, Any]] = {}
+    values = list(features_raw.values()) if isinstance(features_raw, dict) else []
+    legacy_map = bool(values) and all(isinstance(v, str) for v in values)
+
+    if legacy_map:
+        for k, v in features_raw.items():
+            fid = str(k)
+            rel = str(v).replace("\\", "/").strip()
+            stem = Path(rel).stem if rel else fid
+            roi = legacy_rois.get(fid) or legacy_rois.get(stem)
+            features[fid] = FeatureDef(id=fid, label=fid)
+            if rel:
+                pending_links[fid] = {
+                    "asset": rel,
+                    "search_roi": list(roi) if roi else None,
+                }
+    elif isinstance(features_raw, dict):
+        for k, v in features_raw.items():
+            feat, legacy = _feature_from_json(str(k), v)
+            features[feat.id] = feat
+            if legacy:
+                pending_links[feat.id] = legacy
+
+    new_format = bool(values) and all(isinstance(v, dict) for v in values)
+
+    # Legacy detect → recognize_with (only when upgrading old pages)
+    if detect_rel and (legacy_map or not features):
+        if detect_roi is None:
+            stem = Path(detect_rel).stem
+            if stem in legacy_rois:
+                detect_roi = list(legacy_rois[stem])
+        matched = None
+        for fid, link in pending_links.items():
+            if str(link.get("asset") or "") == detect_rel:
+                matched = fid
+                break
+        if matched is None:
+            stem = Path(detect_rel).stem or "main"
+            fid = stem if stem not in features else f"{stem}__page"
+            features[fid] = FeatureDef(id=fid, label=stem)
+            pending_links[fid] = {
+                "asset": detect_rel,
+                "search_roi": list(detect_roi) if detect_roi else None,
+            }
+            matched = fid
+        elif detect_roi and not pending_links[matched].get("search_roi"):
+            pending_links[matched]["search_roi"] = list(detect_roi)
+        if not recognize_with:
+            recognize_with = matched
+    elif detect_rel and new_format and not recognize_with:
+        for fid, link in pending_links.items():
+            if str(link.get("asset") or "") == detect_rel:
+                recognize_with = fid
+                break
+        if not recognize_with:
+            for fid, feat in features.items():
+                # visual_id already set — resolve after promote; try pending only here
+                _ = fid
+                _ = feat
+
+    if recognize_with and recognize_with not in features:
+        recognize_with = None
+
+    _ = page_id
+    # Stash detect_roi on pending sentinel for promote
+    if detect_rel:
+        pending_links["__detect__"] = {
+            "asset": detect_rel,
+            "search_roi": list(detect_roi) if detect_roi else None,
+        }
+    return features, pending_links, recognize_with
+
+
 def _page_from_json(raw: dict[str, Any], *, page_id: str | None = None) -> PageDef:
     pid = str(page_id or raw["id"])
     _reject_probe(raw, pid)
-    detect_rel = str(raw.get("detect") or f"pages/{pid}/features/main.png")
-    features = {str(k): str(v) for k, v in (raw.get("features") or {}).items()}
 
     if raw.get("state_tree") is not None:
         tree = [_node_from_json(n) for n in raw["state_tree"]]
@@ -457,29 +668,38 @@ def _page_from_json(raw: dict[str, Any], *, page_id: str | None = None) -> PageD
     if default_post and default_post.tree:
         normalize_sole_unscored_else(default_post.tree)
 
-    detect_roi = _roi_from_json(raw.get("detect_roi"))
-    feature_rois = {
-        str(k): list(r)
-        for k, v in (raw.get("feature_rois") or {}).items()
-        if (r := _roi_from_json(v)) is not None
-    }
-    stem = Path(detect_rel).stem
-    if detect_roi is None and stem in feature_rois:
-        detect_roi = list(feature_rois[stem])
+    features, pending_links, recognize_with = _features_from_page_json(raw, page_id=pid)
+    visuals = _visuals_from_page_json(raw)
+    detect_meta = pending_links.pop("__detect__", None)
+    detect_rel = str((detect_meta or {}).get("asset") or "")
+    detect_roi = (detect_meta or {}).get("search_roi")
 
-    return PageDef(
+    source = str(raw.get("source") or "").replace("\\", "/").strip() or None
+
+    page = PageDef(
         page_id=pid,
-        detect_relpath=detect_rel,
         name=str(raw.get("name") or pid),
         state_tree=tree,
-        feature_map=features,
-        detect_roi=detect_roi,
-        feature_rois=feature_rois,
+        features=features,
+        visuals=visuals,
+        recognize_with=recognize_with,
+        source=source,
         pair_with=str(raw["pair_with"]) if raw.get("pair_with") else None,
         detect_priority=int(raw.get("detect_priority", 0)),
         decide_params=_params_from_json(raw.get("decide_params")),
         default_post=default_post,
     )
+    _promote_legacy_links(
+        page,
+        pending_links,
+        detect_rel=detect_rel,
+        detect_roi=list(detect_roi) if detect_roi else None,
+    )
+    # Drop dangling visual_id
+    for feat in page.features.values():
+        if feat.visual_id and feat.visual_id not in page.visuals:
+            feat.visual_id = None
+    return page
 
 
 def _roi_from_json(raw: Any) -> list[float] | None:
@@ -494,20 +714,45 @@ def _roi_from_json(raw: Any) -> list[float] | None:
     return list(norm) if norm else None
 
 
+def _visual_to_json(vis: VisualDef) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "id": vis.id,
+        "label": vis.label or vis.id,
+        "template": vis.asset,
+        "asset": vis.asset,
+    }
+    if vis.search_roi:
+        out["search_roi"] = list(vis.search_roi)
+    if vis.content_roi:
+        out["content_roi"] = list(vis.content_roi)
+    return out
+
+
+def _feature_to_json(feat: FeatureDef) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "id": feat.id,
+        "label": feat.label or feat.id,
+    }
+    if feat.notes:
+        out["notes"] = feat.notes
+    if feat.visual_id:
+        out["visual_id"] = feat.visual_id
+    return out
+
+
 def page_to_dict(page: PageDef) -> dict[str, Any]:
     item: dict[str, Any] = {
         "id": page.page_id,
         "name": page.display_name(),
-        "detect": page.detect_relpath,
         "detect_priority": page.detect_priority,
         "pair_with": page.pair_with,
-        "features": page.feature_map,
+        "recognize_with": page.recognize_with,
+        "visuals": {vid: _visual_to_json(v) for vid, v in page.visuals.items()},
+        "features": {fid: _feature_to_json(f) for fid, f in page.features.items()},
         "state_tree": [_node_to_json(n) for n in page.state_tree],
     }
-    if page.detect_roi:
-        item["detect_roi"] = list(page.detect_roi)
-    if page.feature_rois:
-        item["feature_rois"] = {k: list(v) for k, v in page.feature_rois.items()}
+    if page.source:
+        item["source"] = page.source
     dp = _params_to_json(page.decide_params)
     if dp:
         item["decide_params"] = dp
@@ -607,8 +852,6 @@ def load_project(project_dir: str | Path) -> Project:
         var_defaults=dict(data.get("vars") or {}),
         var_schema=var_schema,
     )
-    for page in project.pages.values():
-        sync_page_asset_maps(project, page)
     rebuild_resource_index(project)
     return project
 
@@ -672,7 +915,6 @@ def save_project(project: Project) -> Path:
     (project.root / "pages").mkdir(parents=True, exist_ok=True)
     for page in project.pages.values():
         ensure_page_asset_dirs(project, page.page_id)
-        sync_page_asset_maps(project, page)
         pj = page_json_path(project, page.page_id)
         pj.parent.mkdir(parents=True, exist_ok=True)
         pj.write_text(

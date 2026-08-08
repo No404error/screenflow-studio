@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { useProjectStore } from '@/stores/project'
 
 const props = defineProps<{
@@ -8,6 +9,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ 'update:modelValue': [string] }>()
 
+const { t } = useI18n()
 const project = useProjectStore()
 const names = computed(() => Object.keys(project.project?.vars || {}).sort())
 const undeclared = computed(() => !props.modelValue || names.value.includes(props.modelValue))
@@ -15,7 +17,7 @@ const undeclared = computed(() => !props.modelValue || names.value.includes(prop
 
 <template>
   <select
-    class="sf-select"
+    class="sf-select sf-field-select"
     :class="{ warn: modelValue && !undeclared }"
     :value="modelValue"
     @change="emit('update:modelValue', ($event.target as HTMLSelectElement).value)"
@@ -23,7 +25,7 @@ const undeclared = computed(() => !props.modelValue || names.value.includes(prop
     <option v-if="allowEmpty" value="">—</option>
     <option v-for="n in names" :key="n" :value="n">{{ n }}</option>
     <option v-if="modelValue && !names.includes(modelValue)" :value="modelValue">
-      {{ modelValue }} (undeclared)
+      {{ modelValue }} ({{ t('undeclared') }})
     </option>
   </select>
 </template>
