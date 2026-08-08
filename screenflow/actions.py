@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from typing import Any, Callable
 
 import numpy as np
@@ -79,6 +78,10 @@ class ActionRunner:
         """Run an action pack. Returns False if aborted."""
         flat = self.expand_steps(steps)
         if not flat:
+            if steps:
+                # Had steps (e.g. broken macros) — do not treat as success / arm post.
+                self.log.info("Action: empty pack after expand — abort")
+                return False
             self.log.info("Action: empty pack → next loop")
             return True
 
@@ -99,35 +102,42 @@ class ActionRunner:
 
             if step.op == "click":
                 assert isinstance(step.target, str)
-                click_key = (
-                    scoped_asset_key(page_id, step.target)
-                    if page_id
-                    else step.target
-                )
+                click_key = self._resolve_click_key(page_id, str(step.target))
+                if click_key is None:
+                    self.log.info(f"Action: click target not found: {step.target}")
+                    return False
                 pos = self.matcher.find_click_target(frame, click_key)
-                if pos is None and click_key != step.target:
-                    pos = self.matcher.find_click_target(frame, step.target)
                 if pos is None:
                     self.log.detail("  click miss — recapture")
                     frame = self.matcher.capture_screen()
                     pos = self.matcher.find_click_target(frame, click_key)
-                    if pos is None and click_key != step.target:
-                        pos = self.matcher.find_click_target(frame, step.target)
                 if pos is None:
                     self.log.info(f"Action: click target not found: {step.target}")
                     return False
                 self.log.detail(f"  at {pos}")
-                self.input.click(*pos, force=True)
+                if not self.input.click(*pos, force=False, is_running=self._is_running):
+                    self.log.info("Action: paused/stopped — abort pack")
+                    return False
                 frame = self.matcher.capture_screen()
             elif step.op == "key":
                 assert isinstance(step.target, str)
-                self.input.tap_key(step.target)
+                if not self.input.tap_key(step.target, is_running=self._is_running):
+                    self.log.info("Action: paused/stopped — abort pack")
+                    return False
             elif step.op == "hold_key":
                 key = str(step.target or "space")
                 seconds = float(step.hold if step.hold is not None else 1.0)
-                self.input.hold_key(key, seconds)
+                if not self.input.hold_key(
+                    key, seconds, is_running=self._is_running
+                ):
+                    self.log.info("Action: paused/stopped — abort pack")
+                    return False
             elif step.op == "wait":
-                time.sleep(float(step.target or 0))
+                if not self.input.interruptible_sleep(
+                    float(step.target or 0), self._is_running
+                ):
+                    self.log.info("Action: paused/stopped — abort pack")
+                    return False
             elif step.op == "set_var" and vars is not None:
                 # target: "name=value" or reason holds value
                 raw = str(step.target or "")
@@ -140,7 +150,12 @@ class ActionRunner:
             elif step.op == "clear_var" and vars is not None:
                 vars.pop(str(step.target or ""), None)
             elif step.op == "script":
-                ok = self._run_script(str(step.target or ""), page_id=page_id, vars=vars)
+                ok = self._run_script(
+                    str(step.target or ""),
+                    page_id=page_id,
+                    vars=vars,
+                    params=step.params,
+                )
                 if not ok:
                     return False
             else:
@@ -167,6 +182,20 @@ class ActionRunner:
         self.log.info("Action: pack finished → next loop")
         return True
 
+    def _resolve_click_key(self, page_id: str | None, target: str) -> str | None:
+        """Prefer scoped click asset; bare name only if uniquely indexed."""
+        target = (target or "").strip()
+        if not target:
+            return None
+        store = self.matcher.click
+        if not page_id:
+            return target if target in store else None
+        scoped = scoped_asset_key(page_id, target)
+        if scoped in store:
+            return scoped
+        if target in store:
+            return target
+        return None
 
     def _run_script(
         self,
@@ -174,6 +203,7 @@ class ActionRunner:
         *,
         page_id: str | None,
         vars: dict[str, Any] | None,
+        params: dict[str, Any] | None = None,
     ) -> bool:
         """Phase 3: load project script and call run(ctx, params)."""
         path = (self.project.root / rel).resolve()
@@ -201,7 +231,7 @@ class ActionRunner:
                 "vars": vars if vars is not None else {},
                 "log": self.log.info,
             }
-            result = run(ctx, {})
+            result = run(ctx, dict(params) if params else {})
             if result == "abort_pack":
                 return False
             return True

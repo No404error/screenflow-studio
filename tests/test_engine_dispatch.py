@@ -169,11 +169,10 @@ def test_dispatch_page_change_ends_sticky(project_root):
         ],
     )
     eng = _engine(_project(project_root, {"p": page}))
-    # Post re-detects: prefer hit → maybe force_full. Sequence covers both calls.
+    # Sticky post always force_full — one detect_page per sticky dispatch.
     results = [
-        MatchResult(page_id="p", confidence=0.9, center=(1, 1)),  # first post prefer
-        MatchResult(page_id="other", confidence=0.9, center=(1, 1)),  # 2nd prefer miss
-        MatchResult(page_id="other", confidence=0.9, center=(1, 1)),  # 2nd force_full
+        MatchResult(page_id="p", confidence=0.9, center=(1, 1)),
+        MatchResult(page_id="other", confidence=0.9, center=(1, 1)),
     ]
     eng.matcher.detect_page = MagicMock(side_effect=results)
     eng.dispatch(
@@ -188,8 +187,8 @@ def test_dispatch_page_change_ends_sticky(project_root):
     assert eng._sticky is None
 
 
-def test_post_prefers_armed_page(project_root):
-    """P2: post detect uses prefer=armed page (fewer match_template calls)."""
+def test_post_uses_full_detect(project_root):
+    """Sticky post detect scans all page templates (force_full)."""
     import cv2
 
     for pid, seed in (("p", 1), ("q", 2), ("r", 3)):
@@ -267,9 +266,72 @@ def test_post_prefers_armed_page(project_root):
             screen, MatchResult(page_id="p", confidence=0.99, center=(1, 1))
         )
 
-    # Post prefer should match only armed page (1 call), not all 3 templates.
-    assert calls["n"] == 1, f"expected light post detect, got {calls['n']} matches"
+    assert calls["n"] == 3, f"expected full post detect, got {calls['n']} matches"
     assert eng._sticky is None  # once mode ends in same frame
+
+
+def test_dispatch_does_not_arm_post_when_actions_fail(project_root):
+    post = PostListen(
+        mode="until_page",
+        tree=[],
+    )
+    page = PageDef(
+        page_id="p",
+        name="Page",
+        detect_relpath="pages/p/detect/main.png",
+        state_tree=[
+            StateNode(
+                id="main",
+                name="Main",
+                is_else=True,
+                actions=[ActionStep("wait", 0.01)],
+                post=post,
+            )
+        ],
+    )
+    eng = _engine(_project(project_root, {"p": page}))
+    eng.actions.run_steps = MagicMock(return_value=False)
+    eng.dispatch(
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        MatchResult(page_id="p", confidence=0.9, center=(1, 1)),
+    )
+    assert eng._sticky is None
+
+
+def test_status_payload_marks_sticky_followup(project_root):
+    payloads: list[dict] = []
+    page = PageDef(
+        page_id="p",
+        name="Page",
+        detect_relpath="pages/p/detect/main.png",
+        state_tree=[
+            StateNode(
+                id="main",
+                name="Main",
+                is_else=True,
+                actions=[],
+                post=PostListen(mode="until_page", tree=[]),
+            )
+        ],
+    )
+    project = _project(project_root, {"p": page})
+    eng = FlowEngine(project, log=lambda _m: None, status=payloads.append)
+    eng.actions.run_steps = MagicMock(return_value=True)
+    eng.matcher.detect_page = MagicMock(
+        return_value=MatchResult(page_id="p", confidence=0.9, center=(1, 1))
+    )
+    eng.matcher.capture_screen = MagicMock(
+        return_value=np.zeros((8, 8, 3), dtype=np.uint8)
+    )
+    eng.dispatch(
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        MatchResult(page_id="p", confidence=0.9, center=(1, 1)),
+    )
+    eng._emit_status("running", page_id="p", state="Main › post")
+    assert payloads
+    last = payloads[-1]
+    assert last.get("sticky") is True
+    assert last.get("post_mode") == "until_page"
 
 
 def test_dispatch_arms_until_page_empty_tree(project_root):

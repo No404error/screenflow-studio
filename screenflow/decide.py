@@ -55,9 +55,35 @@ def score_node(
             source=spec.source,
             roi=spec.roi,
         )
-        conf = _template_score(base, screen, matcher, page_id)
+        conf, found = _template_score(base, screen, matcher, page_id)
+        # Missing template must not invert to 1.0 and win forever.
+        if not found:
+            return 0.0
         return max(0.0, 1.0 - conf)
-    return _template_score(spec, screen, matcher, page_id)
+    conf, _ = _template_score(spec, screen, matcher, page_id)
+    return conf
+
+
+def _resolve_store_key(
+    matcher: "ScreenMatcher",
+    page_id: str,
+    key: str,
+    source: str,
+) -> str | None:
+    """
+    Prefer page-scoped asset key. Bare-name fallback only when that unscoped
+    key is indexed (rebuild keeps unscoped keys only when unique project-wide).
+    """
+    store = getattr(matcher, "click" if source == "click" else "detect", None)
+    if not isinstance(store, dict):
+        # Test doubles without a real store: try scoped then bare.
+        return None
+    scoped = scoped_asset_key(page_id, key)
+    if scoped in store:
+        return scoped
+    if key in store:
+        return key
+    return None
 
 
 def _template_score(
@@ -65,23 +91,29 @@ def _template_score(
     screen: np.ndarray,
     matcher: "ScreenMatcher",
     page_id: str,
-) -> float:
+) -> tuple[float, bool]:
+    """Return (confidence, asset_found)."""
     key = (spec.key or "").strip()
     if not key:
-        return 0.0
+        return 0.0, False
     roi = tuple(spec.roi) if spec.roi and len(spec.roi) == 4 else None
     source = (spec.source or "detect").lower()
-    if source == "click":
-        scoped = scoped_asset_key(page_id, key)
-        conf, _ = matcher.match_click(screen, scoped, roi=roi)
-        if conf <= 0:
-            conf, _ = matcher.match_click(screen, key, roi=roi)
-        return conf
+    if source not in ("click", "detect"):
+        source = "detect"
+    match_fn = matcher.match_click if source == "click" else matcher.match_detect
+    store_key = _resolve_store_key(matcher, page_id, key, source)
+    if store_key is not None:
+        conf, _ = match_fn(screen, store_key, roi=roi)
+        return conf, True
+    store = getattr(matcher, "click" if source == "click" else "detect", None)
+    if isinstance(store, dict):
+        return 0.0, False
+    # Test doubles: scoped then bare (treat as found for non-invert template paths).
     scoped = scoped_asset_key(page_id, key)
-    conf, _ = matcher.match_detect(screen, scoped, roi=roi)
-    if conf <= 0:
-        conf, _ = matcher.match_detect(screen, key, roi=roi)
-    return conf
+    conf, _ = match_fn(screen, scoped, roi=roi)
+    if conf <= 0 and key != scoped:
+        conf, _ = match_fn(screen, key, roi=roi)
+    return conf, True
 
 
 def decide_layer(

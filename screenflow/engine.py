@@ -59,6 +59,7 @@ class FlowEngine:
         self._last_page_id: str | None = None
         self._last_state: str | None = None
         self._sticky: StickyPost | None = None
+        self._last_post_reason: str | None = None
         self.vars: dict[str, Any] = dict(project.var_defaults)
 
     def _emit_status(
@@ -68,14 +69,16 @@ class FlowEngine:
         state: str | None = None,
         *,
         clear: bool = False,
+        error: str | None = None,
     ) -> None:
         if clear:
             self._last_page_id = None
             self._last_state = None
+            self._last_post_reason = None
         else:
             if page_id and page_id != "UNKNOWN":
                 self._last_page_id = page_id
-            elif page_id == "UNKNOWN" and mode == "running":
+            elif page_id == "UNKNOWN" and mode == "running" and self._sticky is None:
                 self._last_page_id = None
                 self._last_state = None
             if state is not None:
@@ -85,14 +88,24 @@ class FlowEngine:
         pid = self._last_page_id
         page = self.project.pages.get(pid) if pid else None
         page_label = page.display_name() if page else None
-        self._status_cb(
-            {
-                "mode": mode,
-                "page_id": pid,
-                "page_label": page_label,
-                "state": self._last_state,
-            }
-        )
+        sticky = self._sticky
+        payload: dict[str, Any] = {
+            "mode": mode,
+            "page_id": pid,
+            "page_label": page_label,
+            "state": self._last_state,
+            "sticky": sticky is not None,
+            "post_mode": normalize_post_mode(sticky.mode) if sticky else None,
+            "post_reason": self._last_post_reason if sticky else None,
+        }
+        if error:
+            payload["error"] = error
+        self._status_cb(payload)
+
+    def _clear_sticky(self) -> None:
+        self._sticky = None
+        self._last_post_reason = None
+        self.matcher.clear_page_sticky()
 
     def log(self, msg: str) -> None:
         self.elog.info(msg)
@@ -135,11 +148,17 @@ class FlowEngine:
                 post = page.default_post
         if post is None:
             return
+        raw_mode = (post.mode or "").strip().lower()
         mode = normalize_post_mode(post.mode)
+        if raw_mode and raw_mode != mode and not (
+            raw_mode == "until_miss" and mode == "until_case"
+        ):
+            self.elog.detail(f"  post mode {post.mode!r} normalized to {mode}")
         # until_page may arm with an empty tree (page-change wait only).
         if not post.tree and mode != "until_page":
             return
         frames = post.frames if mode == "frames" else None
+        self.matcher.clear_page_sticky()
         self._sticky = StickyPost(
             page_id=page_id,
             listen=post,
@@ -162,15 +181,18 @@ class FlowEngine:
             delay = float(sticky.listen.settle or 0.0)
             if delay > 0:
                 self.elog.detail(f"  post settle {delay:g}s")
-                time.sleep(delay)
+                if not self.input.interruptible_sleep(delay, self._is_running):
+                    self.elog.info("Post settle interrupted — abort follow-up")
+                    self._clear_sticky()
+                    return self._last_state
             # Recapture after main actions / settle so UI can appear
             frame = self.matcher.capture_screen()
         else:
             frame = screen
-        # Light path: assume still on the armed page; full scan only if not.
-        pr = self.matcher.detect_page(frame, prefer=sticky.page_id)
-        if pr.page_id != sticky.page_id:
-            pr = self.matcher.detect_page(frame, force_full=True)
+        # Full scan while sticky — do not update matcher page-sticky cache.
+        pr = self.matcher.detect_page(
+            frame, force_full=True, commit_sticky=False
+        )
         outcome = run_post_listen(
             self.project,
             self.matcher,
@@ -180,13 +202,14 @@ class FlowEngine:
             current_page_id=pr.page_id,
         )
         reason = str((outcome.detail or {}).get("reason") or "")
+        self._last_post_reason = reason or None
         if outcome.skipped:
             # Sticky post owns the loop — main state tree is not evaluated.
             if reason == "until_page_wait":
                 self.elog.info(
                     f"{outcome.short_path or 'post'}: waiting for another page"
                 )
-            elif reason == "no_match_skip":
+            elif reason in ("no_match_skip", "until_page_else_wait"):
                 self.elog.info(
                     f"{outcome.short_path or 'post'}: no follow-up case — keep waiting"
                 )
@@ -194,13 +217,13 @@ class FlowEngine:
                 self.elog.detail("  post: unrecognized page — skip frame")
             else:
                 self.elog.detail(f"  post: skip ({reason or 'unknown'})")
-            return self._last_state
+            return outcome.short_path or self._last_state
         if outcome.short_path:
             self.elog.info(outcome.short_path)
         if self.elog.verbose and outcome.detail:
             self.elog.detail(f"  post detail: {outcome.detail}")
         if outcome.ended:
-            self._sticky = None
+            self._clear_sticky()
             if reason:
                 self.elog.detail(f"  post ended: {reason}")
         return outcome.short_path or self._last_state
@@ -239,14 +262,17 @@ class FlowEngine:
         short = f"{page_label} › {result.short_path()}"
         self.elog.info(short)
 
-        self.actions.run_steps(
+        ok = self.actions.run_steps(
             result.leaf.actions,
             screen,
             {},
             page_id=page_def.page_id,
             vars=self.vars,
         )
-        # Arm post, then first listen frame (settle → capture) for all modes
+        if not ok:
+            self.elog.info("Action pack aborted — skip follow-up")
+            return short
+        # Arm post only after a successful main pack
         self._arm_post(result.leaf, page_def.page_id, short)
         if self._sticky is not None:
             path = self._dispatch_sticky_post(screen)
@@ -306,8 +332,12 @@ class FlowEngine:
                         state=state_name if state_name is not None else self._last_state,
                     )
             except Exception as exc:
-                self.elog.info(f"Error: {exc} (continue)")
+                self.elog.info(f"Error: {exc} — auto-paused")
                 self.elog.detail(f"  {type(exc).__name__}: {exc!r}")
+                with self._lock:
+                    if self.status == EngineStatus.RUNNING:
+                        self.status = EngineStatus.PAUSED
+                self._emit_status("paused", error=str(exc))
 
             # Adaptive poll: only sleep the remainder of poll_interval.
             elapsed = time.perf_counter() - t0
@@ -331,8 +361,7 @@ class FlowEngine:
         if not resuming:
             self.sync_runtime()
             self.vars = dict(self.project.var_defaults)
-            self._sticky = None
-            self.matcher.clear_page_sticky()
+            self._clear_sticky()
         self.elog.status("RUNNING")
         if not resuming:
             self.elog.detail(
@@ -356,7 +385,6 @@ class FlowEngine:
             if self.status == EngineStatus.STOPPED:
                 return
             self.status = EngineStatus.STOPPED
-        self._sticky = None
-        self.matcher.clear_page_sticky()
+        self._clear_sticky()
         self.elog.status("STOPPED")
         self._emit_status("stopped", clear=True)

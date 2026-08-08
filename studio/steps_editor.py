@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -10,6 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -120,14 +124,19 @@ class StepsEditor(QWidget):
         self.ed_reason = QLineEdit()
         self.ed_reason.editingFinished.connect(self._commit_current)
 
+        self.ed_params = QLineEdit()
+        self.ed_params.editingFinished.connect(self._commit_current)
+
         self.lbl_op = QLabel()
         self.lbl_target = QLabel()
         self.lbl_hold = QLabel()
+        self.lbl_params = QLabel()
         self.lbl_reason = QLabel()
         form.addRow(self.lbl_op, self.cmb_op)
         form.addRow(self.lbl_target, self.target_stack)
         self._hold_row_widgets = (self.lbl_hold, self.spin_hold)
         form.addRow(self.lbl_hold, self.spin_hold)
+        form.addRow(self.lbl_params, self.ed_params)
         form.addRow(self.lbl_reason, self.ed_reason)
         root.addWidget(self.form_box)
 
@@ -188,6 +197,8 @@ class StepsEditor(QWidget):
         self.lbl_op.setText(t("step_op"))
         self._update_target_label()
         self.lbl_hold.setText(t("step_hold"))
+        self.lbl_params.setText(t("step_params"))
+        self.ed_params.setPlaceholderText(t("step_ph_params"))
         self.lbl_reason.setText(t("step_reason"))
         self._rebuild_op_combo()
         self._refresh_list()
@@ -220,7 +231,13 @@ class StepsEditor(QWidget):
     def set_steps(self, steps: list[ActionStep]) -> None:
         self._block = True
         self._steps = [
-            ActionStep(op=s.op, target=s.target, reason=s.reason, hold=s.hold)
+            ActionStep(
+                op=s.op,
+                target=s.target,
+                reason=s.reason,
+                hold=s.hold,
+                params=dict(s.params) if s.params else None,
+            )
             for s in steps
         ]
         self._refresh_list()
@@ -235,7 +252,13 @@ class StepsEditor(QWidget):
         # would recurse (_on_steps_changed → get_steps → commit → changed → …).
         self._commit_current(emit=False)
         return [
-            ActionStep(op=s.op, target=s.target, reason=s.reason, hold=s.hold)
+            ActionStep(
+                op=s.op,
+                target=s.target,
+                reason=s.reason,
+                hold=s.hold,
+                params=dict(s.params) if s.params else None,
+            )
             for s in self._steps
         ]
 
@@ -268,6 +291,7 @@ class StepsEditor(QWidget):
         self.cmb_click.blockSignals(False)
         self.cmb_target.setCurrentText("")
         self.ed_reason.clear()
+        self.ed_params.clear()
         self.form_box.setEnabled(False)
         self._block = False
 
@@ -281,12 +305,20 @@ class StepsEditor(QWidget):
         self._set_op(step.op if step.op in OPS else "wait")
         self._show_target_widget(step.op)
         self._fill_target(step)
+        if step.params:
+            self.ed_params.setText(json.dumps(step.params, ensure_ascii=False))
+        else:
+            self.ed_params.clear()
         self.ed_reason.setText(step.reason or "")
         self._block = False
 
     def _set_hold_row_visible(self, visible: bool) -> None:
         self.lbl_hold.setVisible(visible)
         self.spin_hold.setVisible(visible)
+
+    def _set_params_row_visible(self, visible: bool) -> None:
+        self.lbl_params.setVisible(visible)
+        self.ed_params.setVisible(visible)
 
     def _refill_click_combo(self, selected: str | None = None) -> None:
         if self._click_assets:
@@ -316,6 +348,7 @@ class StepsEditor(QWidget):
         self.cmb_target.setVisible(op == "macro")
         self.spin_target.setVisible(op == "wait")
         self._set_hold_row_visible(op == "hold_key")
+        self._set_params_row_visible(op == "script")
         self._update_target_label(op)
         if op == "set_var":
             self.ed_target.setPlaceholderText(self._t("step_ph_set_var"))
@@ -402,6 +435,26 @@ class StepsEditor(QWidget):
             return float(self.spin_hold.value())
         return None
 
+    def _read_params(self, op: str) -> dict[str, Any] | None:
+        if op != "script":
+            return None
+        text = self.ed_params.text().strip()
+        if not text:
+            return None
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            QMessageBox.warning(
+                self, self._t("err_title"), self._t("step_params_invalid")
+            )
+            return self._steps[self.list.currentRow()].params
+        if not isinstance(data, dict):
+            QMessageBox.warning(
+                self, self._t("err_title"), self._t("step_params_invalid")
+            )
+            return self._steps[self.list.currentRow()].params
+        return dict(data)
+
     def _commit_current(self, *, emit: bool = True) -> None:
         if self._block:
             return
@@ -420,6 +473,7 @@ class StepsEditor(QWidget):
             target=target,
             reason=reason,
             hold=self._read_hold(op),
+            params=self._read_params(op),
         )
         if not emit:
             return

@@ -15,8 +15,9 @@ class FakeMatcher:
     def __init__(self, scores: dict[str, float]):
         self.scores = scores
         self.runtime = SimpleNamespace(match_threshold=0.72)
-        self.detect = {}
-        self.click = {}
+        # Membership drives scoped resolve; values are placeholders.
+        self.detect = {k: object() for k in scores}
+        self.click = {k: object() for k in scores}
 
     def match_detect(self, screen, key, *, roi=None):
         return self.scores.get(key, 0.0), (1, 1)

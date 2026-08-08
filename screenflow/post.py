@@ -37,6 +37,16 @@ class PostOutcome:
     detail: dict[str, Any] = field(default_factory=dict)
 
 
+def _consume_frame(sticky: StickyPost, out: PostOutcome) -> None:
+    """Decrement frames budget; end when exhausted."""
+    if sticky.frames_left is None:
+        return
+    sticky.frames_left -= 1
+    if sticky.frames_left <= 0:
+        out.ended = True
+        out.detail["reason"] = "frames_exhausted"
+
+
 def run_post_listen(
     project: Project,
     matcher: "ScreenMatcher",
@@ -52,9 +62,9 @@ def run_post_listen(
     End conditions by mode:
       once — after one evaluation
       until_page — when the page changes (empty tree / ELSE / no-match keep listening)
-      until_case — when the listen tree picks ELSE (legacy until_miss)
-      frames — when the frame budget is exhausted
-    UNKNOWN: end only if listen.end_on_unknown; otherwise skip this frame.
+      until_case — when the listen leaf is ELSE (legacy until_miss)
+      frames — after N observation attempts (hit, miss, or unknown-skip)
+    UNKNOWN: end only if listen.end_on_unknown; otherwise skip this frame (still counts for frames).
     """
     out = PostOutcome(ran=True)
     mode = normalize_post_mode(sticky.mode)
@@ -67,6 +77,8 @@ def run_post_listen(
         out.skipped = True
         out.ran = False
         out.detail["reason"] = "unknown_skip"
+        if mode == "frames":
+            _consume_frame(sticky, out)
         return out
     if current_page_id != sticky.page_id:
         out.ended = True
@@ -86,6 +98,17 @@ def run_post_listen(
             out.ran = False
             out.detail["reason"] = "until_page_wait"
             return out
+        if mode == "frames":
+            path_parts = []
+            if sticky.path_prefix:
+                path_parts.append(sticky.path_prefix)
+            path_parts.append("post")
+            out.short_path = " › ".join(path_parts)
+            out.skipped = True
+            out.ran = False
+            out.detail["reason"] = "empty_tree"
+            _consume_frame(sticky, out)
+            return out
         out.ended = True
         out.detail["reason"] = "empty_tree"
         return out
@@ -99,9 +122,9 @@ def run_post_listen(
         listen.params,
         vars=engine.vars,
     )
-    out.detail = result.detail
-    layers = result.detail.get("layers") or []
-    used_else = bool(layers and layers[-1].get("used_else"))
+    out.detail = dict(result.detail)
+    # End until_case on the leaf being ELSE (not last-layer compete flag).
+    used_else = bool(result.leaf is not None and result.leaf.is_else)
     out.used_else = used_else
     path_parts = []
     if sticky.path_prefix:
@@ -112,17 +135,25 @@ def run_post_listen(
     out.short_path = " › ".join(path_parts)
 
     if result.leaf is None:
-        # until_page: stay armed until the page actually changes
-        if mode == "until_page":
+        if mode in ("until_page", "frames"):
             out.skipped = True
             out.ran = False
             out.detail["reason"] = "no_match_skip"
+            if mode == "frames":
+                _consume_frame(sticky, out)
             return out
         out.ended = True
         out.detail["reason"] = "no_match"
         return out
 
     out.leaf = result.leaf
+    # until_page + ELSE: wait for page change; do not re-fire ELSE actions every poll.
+    if mode == "until_page" and result.leaf.is_else:
+        out.skipped = True
+        out.ran = False
+        out.detail["reason"] = "until_page_else_wait"
+        return out
+
     # Run post actions
     engine.actions.run_steps(
         result.leaf.actions,
@@ -139,12 +170,8 @@ def run_post_listen(
             out.ended = True
             out.detail["reason"] = "else_ends_until_case"
     elif mode == "until_page":
-        # Continue on same page (including ELSE); end only via page_changed above.
+        # Continue on same page; end only via page_changed above.
         pass
     elif mode == "frames":
-        if sticky.frames_left is not None:
-            sticky.frames_left -= 1
-            if sticky.frames_left <= 0:
-                out.ended = True
-                out.detail["reason"] = "frames_exhausted"
+        _consume_frame(sticky, out)
     return out

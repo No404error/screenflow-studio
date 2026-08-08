@@ -144,6 +144,31 @@ def test_else_sole_ok():
         assert not [i for i in issues if i.level == "error"]
 
 
+def test_unknown_post_mode_is_error():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        page = PageDef(
+            page_id="p",
+            detect_relpath="x.png",
+            state_tree=[
+                StateNode(
+                    id="a",
+                    is_else=True,
+                    actions=[],
+                    post=PostListen(
+                        mode="forever",
+                        tree=[StateNode(id="pe", is_else=True, actions=[])],
+                    ),
+                )
+            ],
+        )
+        issues = validate_project_structure(_proj(root, {"p": page}), I18n().t)
+        assert any(
+            i.level == "error" and ("forever" in i.text or "mode" in i.text.lower() or "模式" in i.text)
+            for i in issues
+        )
+
+
 def test_score_key_must_exist_in_page_library():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)

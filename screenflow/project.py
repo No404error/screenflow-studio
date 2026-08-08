@@ -54,12 +54,17 @@ def _steps_from_json(items: list[dict[str, Any]] | None) -> list[ActionStep]:
     steps: list[ActionStep] = []
     for raw in items:
         hold = raw.get("hold")
+        params = raw.get("params")
+        params_dict: dict[str, Any] | None = None
+        if isinstance(params, dict):
+            params_dict = dict(params)
         steps.append(
             ActionStep(
                 op=str(raw["op"]),
                 target=raw.get("target"),
                 reason=raw.get("reason"),
                 hold=float(hold) if hold is not None else None,
+                params=params_dict,
             )
         )
     return steps
@@ -75,6 +80,8 @@ def _steps_to_json(steps: list[ActionStep]) -> list[dict[str, Any]]:
             item["reason"] = s.reason
         if s.hold is not None:
             item["hold"] = s.hold
+        if s.params:
+            item["params"] = dict(s.params)
         out.append(item)
     return out
 
@@ -329,6 +336,9 @@ def rebuild_resource_index(project: Project) -> None:
     click_files: dict[str, str] = {}
     detect_priority: dict[str, int] = {}
     page_pairs: list[tuple[str, str]] = []
+    # Bare logical names: only index when unique across pages (no first-writer-wins).
+    bare_detect: dict[str, list[str]] = {}
+    bare_click: dict[str, list[str]] = {}
 
     for page_id, page in project.pages.items():
         ensure_page_asset_dirs(project, page_id)
@@ -336,15 +346,22 @@ def rebuild_resource_index(project: Project) -> None:
         detect_priority[page_id] = page.detect_priority
         for k, rel in page.detect_extras.items():
             detect_files[scoped_asset_key(page_id, k)] = rel
-            detect_files.setdefault(k, rel)
+            bare_detect.setdefault(k, []).append(rel)
         for k, rel in page.click_map.items():
             click_files[scoped_asset_key(page_id, k)] = rel
-            click_files.setdefault(k, rel)
+            bare_click.setdefault(k, []).append(rel)
         if page.pair_with:
             a, b = page_id, page.pair_with
             pair = (a, b) if a < b else (b, a)
             if pair not in page_pairs:
                 page_pairs.append(pair)
+
+    for k, rels in bare_detect.items():
+        if len(rels) == 1:
+            detect_files[k] = rels[0]
+    for k, rels in bare_click.items():
+        if len(rels) == 1:
+            click_files[k] = rels[0]
 
     project.detect_files = detect_files
     project.click_files = click_files

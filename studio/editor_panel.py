@@ -587,24 +587,93 @@ class EditorPanel(QWidget):
         page = self.project.pages.get(page_id)
         if not page:
             return
-        if page.default_post is None:
-            page.default_post = PostListen(tree=[])
-        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QVBoxLayout
+        from copy import deepcopy
+
+        from PySide6.QtWidgets import (
+            QCheckBox,
+            QComboBox,
+            QDialog,
+            QDialogButtonBox,
+            QDoubleSpinBox,
+            QFormLayout,
+            QVBoxLayout,
+        )
+
+        from screenflow.models import normalize_post_mode
+        from screenflow.project import iter_tree
+
+        draft = deepcopy(page.default_post) if page.default_post else PostListen(
+            mode="until_page", tree=[]
+        )
+        draft.mode = normalize_post_mode(draft.mode)
 
         dlg = QDialog(self)
         dlg.setWindowTitle(self.t("ed_page_default_post"))
-        dlg.resize(480, 560)
+        dlg.resize(520, 620)
         lay = QVBoxLayout(dlg)
-        editor = StateTreeEditor(self.t)
+
+        form = QFormLayout()
+        cmb_mode = QComboBox()
+        cmb_mode.addItem(self.t("st_mode_once"), "once")
+        cmb_mode.addItem(self.t("st_mode_until_page"), "until_page")
+        cmb_mode.addItem(self.t("st_mode_until_case"), "until_case")
+        cmb_mode.addItem(self.t("st_mode_frames"), "frames")
+        mi = cmb_mode.findData(draft.mode)
+        cmb_mode.setCurrentIndex(max(0, mi))
+        spin_frames = QDoubleSpinBox()
+        spin_frames.setDecimals(0)
+        spin_frames.setRange(1, 9999)
+        spin_frames.setValue(float(draft.frames or 3))
+        spin_settle = QDoubleSpinBox()
+        spin_settle.setDecimals(2)
+        spin_settle.setRange(0.0, 30.0)
+        spin_settle.setSingleStep(0.1)
+        spin_settle.setValue(float(draft.settle or 0.0))
+        chk_end_unknown = QCheckBox()
+        chk_end_unknown.setChecked(bool(draft.end_on_unknown))
+
+        def _sync_frames(_: int = 0) -> None:
+            spin_frames.setEnabled(cmb_mode.currentData() == "frames")
+
+        cmb_mode.currentIndexChanged.connect(_sync_frames)
+        _sync_frames()
+        form.addRow(self.t("st_post_mode"), cmb_mode)
+        form.addRow(self.t("st_post_frames"), spin_frames)
+        form.addRow(self.t("st_post_settle"), spin_settle)
+        form.addRow(self.t("st_post_end_unknown"), chk_end_unknown)
+        lay.addLayout(form)
+
+        editor = StateTreeEditor(self.t, allow_nested_post=False)
         macros = [(mid, m.name or mid) for mid, m in self.project.macros.items()]
         editor.set_catalog(macros, sorted(page.click_map.keys()))
         editor.set_page_context(self.project, page_id)
-        editor.bind(page.default_post.tree)
+        editor.bind(draft.tree)
         lay.addWidget(editor)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
         lay.addWidget(buttons)
-        dlg.exec()
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        mode = normalize_post_mode(str(cmb_mode.currentData() or "once"))
+        for n in iter_tree(draft.tree):
+            n.post = None
+        if not draft.tree and mode != "until_page":
+            # Empty non-until_page follow-up is invalid — clear default.
+            page.default_post = None
+        else:
+            page.default_post = PostListen(
+                mode=mode,
+                frames=int(spin_frames.value()) if mode == "frames" else None,
+                settle=float(spin_settle.value()),
+                end_on_unknown=chk_end_unknown.isChecked(),
+                tree=draft.tree,
+            )
         self.project_changed.emit()
 
     def _emit_edit_states(self) -> None:

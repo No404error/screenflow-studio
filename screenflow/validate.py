@@ -69,6 +69,17 @@ def _check_post_listen(
     if post is None:
         return []
     issues: list[Issue] = []
+    raw_mode = (post.mode or "").strip().lower()
+    if raw_mode and raw_mode not in (
+        "once",
+        "until_page",
+        "until_case",
+        "frames",
+        "until_miss",
+    ):
+        issues.append(
+            Issue("error", t("val_post_mode", where=where, mode=str(post.mode)))
+        )
     mode = normalize_post_mode(post.mode)
     # until_page may use an empty tree (wait for page change only).
     if not post.tree and mode != "until_page":

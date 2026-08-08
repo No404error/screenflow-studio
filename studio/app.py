@@ -291,6 +291,20 @@ class StudioWindow(QMainWindow):
         self.form_params.addRow(self.params_advanced)
         right_l.addWidget(self.params_group)
 
+        self._runtime_loading = False
+        for w in (
+            self.spin_threshold,
+            self.spin_poll,
+            self.spin_ref_w,
+            self.spin_ref_h,
+            self.spin_state_near,
+            self.spin_state_margin,
+        ):
+            w.valueChanged.connect(self._on_runtime_control_changed)
+        self.cmb_log_lang.currentIndexChanged.connect(self._on_runtime_control_changed)
+        self.chk_redecide.toggled.connect(self._on_runtime_control_changed)
+        self.chk_verbose.toggled.connect(self._on_runtime_control_changed)
+
         btn_row = QHBoxLayout()
         self.btn_apply = QPushButton()
         self.btn_apply.clicked.connect(self.apply_params)
@@ -548,6 +562,22 @@ class StudioWindow(QMainWindow):
         self.btn_stop.setEnabled(has_project and active)
         self._refresh_pause_button()
 
+    def _followup_detail(self, payload: dict) -> str:
+        t = self.t
+        reason = str(payload.get("post_reason") or "")
+        post_mode = str(payload.get("post_mode") or "")
+        if reason in ("until_page_wait", "page_changed", "until_page_else_wait"):
+            return t("status_followup_wait_page")
+        if reason == "unknown_skip":
+            return t("status_followup_unknown")
+        if reason == "no_match_skip":
+            return t("status_followup_keep")
+        if post_mode == "until_page":
+            return t("status_followup_wait_page")
+        if post_mode:
+            return t("status_followup_keep")
+        return t("status_followup_keep")
+
     def _refresh_status_text(self) -> None:
         t = self.t
         payload = self._status_payload
@@ -558,6 +588,16 @@ class StudioWindow(QMainWindow):
         mode = str(payload.get("mode") or "")
         page = payload.get("page_label") or payload.get("page_id")
         state = payload.get("state")
+        sticky = bool(payload.get("sticky"))
+        if mode == "running" and sticky:
+            self.lbl_status.setText(
+                t(
+                    "status_followup",
+                    page=page or t("status_na"),
+                    detail=self._followup_detail(payload),
+                )
+            )
+            return
         if mode == "running":
             if page and state:
                 self.lbl_status.setText(
@@ -574,7 +614,15 @@ class StudioWindow(QMainWindow):
             else:
                 self.lbl_status.setText(t("status_running_unknown"))
         elif mode == "paused":
-            if page and state:
+            if sticky:
+                self.lbl_status.setText(
+                    t(
+                        "status_paused",
+                        page=page or t("status_na"),
+                        state=self._followup_detail(payload),
+                    )
+                )
+            elif page and state:
                 self.lbl_status.setText(
                     t("status_paused", page=page, state=state)
                 )
@@ -600,10 +648,17 @@ class StudioWindow(QMainWindow):
             self._append_log(self.t("log_dirty"))
         self._refresh_window_title()
 
+    def _on_runtime_control_changed(self, *_args) -> None:
+        if self._runtime_loading or not self.project:
+            return
+        self._mark_dirty()
+
     def _ask_save_if_dirty(self) -> bool:
         """Return False if user cancels."""
         if self.project:
             self.editor.flush_all()
+            # Sync runtime spins into memory before save/discard prompt.
+            self.apply_params(persist=False, quiet=True)
         if not self._dirty or not self.project:
             return True
         ans = QMessageBox.question(
@@ -760,16 +815,20 @@ class StudioWindow(QMainWindow):
         self._show_welcome(False)
         self._retranslate()
         rt = self.project.runtime
-        self.spin_threshold.setValue(rt.match_threshold)
-        self.spin_poll.setValue(rt.poll_interval)
-        self.spin_ref_w.setValue(rt.ref_width)
-        self.spin_ref_h.setValue(rt.ref_height)
-        self.spin_state_near.setValue(rt.state_near)
-        self.spin_state_margin.setValue(rt.state_conf_margin)
-        li = self.cmb_log_lang.findData(rt.log_language or "en")
-        self.cmb_log_lang.setCurrentIndex(max(0, li))
-        self.chk_redecide.setChecked(rt.allow_redecide_during_action)
-        self.chk_verbose.setChecked(rt.verbose_log)
+        self._runtime_loading = True
+        try:
+            self.spin_threshold.setValue(rt.match_threshold)
+            self.spin_poll.setValue(rt.poll_interval)
+            self.spin_ref_w.setValue(rt.ref_width)
+            self.spin_ref_h.setValue(rt.ref_height)
+            self.spin_state_near.setValue(rt.state_near)
+            self.spin_state_margin.setValue(rt.state_conf_margin)
+            li = self.cmb_log_lang.findData(rt.log_language or "en")
+            self.cmb_log_lang.setCurrentIndex(max(0, li))
+            self.chk_redecide.setChecked(rt.allow_redecide_during_action)
+            self.chk_verbose.setChecked(rt.verbose_log)
+        finally:
+            self._runtime_loading = False
         self._set_controls_enabled(True)
         self._append_log(self.t("log_opened", path=str(root)))
 
@@ -785,9 +844,20 @@ class StudioWindow(QMainWindow):
             return t("tree_state_else")
         if node.children:
             return t("tree_state_branch", n=len(node.children))
-        extra = t("st_detail_post") if node.post else ""
         base = t("st_detail_leaf", n=len(node.actions))
-        return f"{base} · {extra}" if extra else base
+        if not node.post:
+            return base
+        from screenflow.models import normalize_post_mode
+
+        mode = normalize_post_mode(node.post.mode)
+        tag_key = {
+            "once": "st_mode_tag_once",
+            "until_page": "st_mode_tag_until_page",
+            "until_case": "st_mode_tag_until_case",
+            "frames": "st_mode_tag_frames",
+        }.get(mode, "st_mode_tag_until_page")
+        extra = f"{t('st_detail_post')} ({t(tag_key)})"
+        return f"{base} · {extra}"
 
     def _add_nav_state_items(
         self, parent_item: QTreeWidgetItem, page_id: str, nodes: list
@@ -1033,7 +1103,7 @@ class StudioWindow(QMainWindow):
             self._mark_dirty()
             self.editor.show_empty()
             self._fill_tree()
-    def apply_params(self, persist: bool = True) -> None:
+    def apply_params(self, persist: bool = True, *, quiet: bool = False) -> None:
         if not self.project:
             return
         rt = self.project.runtime
@@ -1065,7 +1135,8 @@ class StudioWindow(QMainWindow):
             )
         if persist:
             self._mark_dirty()
-        self._append_log(self.t("log_params"))
+        if not quiet:
+            self._append_log(self.t("log_params"))
 
     def start_engine(self) -> None:
         if not self.project or not self._project_root:
@@ -1120,13 +1191,19 @@ class StudioWindow(QMainWindow):
                     status=self._engine_status,
                 )
                 self.engine.start()
+                self._engine_launching = False
+                self._status_payload = {"mode": "running"}
+                self._refresh_status_text()
             except Exception as exc:
                 QMessageBox.critical(self, self.t("err_title"), str(exc))
                 self.engine = None
                 self._set_status_idle()
             return
-        self.lbl_status.setText(self.t("status_waiting_admin"))
-        QApplication.processEvents()
+        from studio.elevate import is_admin
+
+        if os.name == "nt" and not is_admin():
+            self.lbl_status.setText(self.t("status_waiting_admin"))
+            QApplication.processEvents()
         try:
             client = RunnerClient(self)
             client.log_message.connect(self._engine_log)
@@ -1135,6 +1212,10 @@ class StudioWindow(QMainWindow):
             client.exited.connect(lambda _c: self._on_runner_exited())
             self.runner = client
             client.start_session(self._project_root, elevate=True)
+            # Ready (UAC done or already elevated) — leave waiting text immediately.
+            self._engine_launching = False
+            self._status_payload = {"mode": "running"}
+            self._refresh_status_text()
             client.send_start()
         except Exception as exc:
             msg = str(exc) or self.t("err_runner_uac")

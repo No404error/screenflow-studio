@@ -44,12 +44,12 @@ ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进�
 3. 添加页面，并导入用于识别与点击定位的图像资源。
 4. 编辑状态树：为不同界面情况配置动作；在无其他分支匹配时可使用「其他」（ELSE）分支。
 5. 按需配置后续观察，以在主动作之后继续根据画面作出响应。
-6. **保存**后点击 **开始**。首次启动引擎时，系统可能提示用户账户控制（UAC）；需允许后方可提权运行引擎进程。
+6. **保存**后点击 **开始**。默认使用**提权外部引擎**时，Windows 可能弹出用户账户控制（UAC），需允许后引擎进程才能启动；若在运行设置中选择 **inline（进程内）** 模式，则不请求 UAC、引擎在 Studio 进程内运行。
 7. 可在设置中切换 Studio 界面语言。
 
 关闭 Studio 时，应用会尝试停止引擎进程。若进程仍残留，可在任务管理器中结束对应的 `ScreenFlow.exe`。
 
-引擎与 Studio 共用同一可执行文件：在需要时由 Studio 以 `--engine-runner` 参数启动第二进程（必要时请求提权）。
+引擎与 Studio 共用同一可执行文件：提权模式下 Studio 以 `--engine-runner` 启动第二进程；inline 模式不另起进程。
 
 ### 项目模型
 
@@ -70,12 +70,12 @@ ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进�
 - 在动作列表中可添加类型为「脚本」的步骤，目标为项目内相对路径（例如 `scripts/my_script.py`）。
 - 脚本文件须定义可调用入口 `run(ctx, params)`。
 - `ctx` 当前提供：`project_root`、`page_id`、`vars`、`log`。
+- 步骤可配置可选的 JSON 对象作为 `params`（未配置时为 `{}`）。
 - 若 `run` 返回 `"abort_pack"`，将中止当前动作包。
 - 脚本路径不得逃逸出项目根目录；启动前校验会检查文件是否存在。
 
 **后续待完善**
 
-- 将步骤级参数传入 `params`（当前实现固定传入空字典 `{}`）
 - 执行超时、取消与更明确的错误呈现
 - 开发期热重载（修改脚本后无需整包重启引擎）
 - 运行隔离 / 沙箱策略
@@ -109,10 +109,9 @@ C:\Users\<用户名>\.screenflow\ui.json
 
 ### 开发者说明
 
-从源码启动 Studio：
+从源码启动 Studio（在仓库根目录执行）：
 
 ```powershell
-cd screenflow
 python -m pip install -r requirements.txt
 python .\run_studio.py
 ```
@@ -167,12 +166,12 @@ Recommended remote repository name: `screenflow-studio`. The product name and ex
 3. Add pages and import images used for detection and click targeting.
 4. Edit the state tree: assign actions to situations; use the ELSE (“Other”) branch when no scored candidate matches.
 5. Configure post-listen where follow-up observation after the main actions is required.
-6. **Save**, then **Start**. On first engine launch, Windows may show a UAC prompt; elevation must be allowed for the elevated runner process.
+6. **Save**, then **Start**. With the default **elevated external runner**, Windows may show a UAC prompt that must be approved for the engine process to start. If run settings use **inline** mode, there is no UAC prompt and the engine runs inside the Studio process.
 7. Switch the Studio UI language in settings as needed.
 
 Closing Studio attempts to stop the engine process. If a process remains, end the corresponding `ScreenFlow.exe` in Task Manager.
 
-Studio and the engine share one executable: when required, Studio starts a second process of the same binary with `--engine-runner` (requesting elevation when configured to do so).
+Studio and the engine share one executable: in elevate mode Studio starts a second process with `--engine-runner`; inline mode does not spawn a separate process.
 
 ### Project model
 
@@ -193,12 +192,12 @@ Automation is stored as a **project folder** (not an installable plugin). Core c
 - Action lists may include a **Script** step whose target is a project-relative path (for example `scripts/my_script.py`).
 - The file must expose a callable `run(ctx, params)`.
 - `ctx` currently provides: `project_root`, `page_id`, `vars`, and `log`.
+- An optional JSON object on the step is passed as `params` (defaults to `{}`).
 - If `run` returns `"abort_pack"`, the current action pack is aborted.
 - Script paths must remain under the project root; pre-start validation checks that the file exists.
 
 **Planned improvements**
 
-- Pass step-level arguments into `params` (today the implementation always passes `{}`)
 - Execution timeout, cancellation, and clearer error reporting
 - Hot reload during development (apply script edits without a full engine restart)
 - Isolation / sandbox policy for user scripts
@@ -232,10 +231,9 @@ Use this software only where permitted by applicable law and by the licenses and
 
 ### Developer notes
 
-Run Studio from source:
+Run Studio from source (from the repository root):
 
 ```powershell
-cd screenflow
 python -m pip install -r requirements.txt
 python .\run_studio.py
 ```

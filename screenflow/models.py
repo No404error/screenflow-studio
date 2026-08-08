@@ -22,6 +22,8 @@ class ActionStep:
     reason: str | None = None
     # hold_key duration (seconds); unused by other ops
     hold: float | None = None
+    # script step: passed as second arg to run(ctx, params)
+    params: dict[str, Any] | None = None
 
 
 @dataclass
@@ -77,7 +79,8 @@ class PostListen:
     """Post-processor listen config on a main leaf."""
 
     # once | until_page | until_case | frames  (legacy until_miss → until_case)
-    mode: str = "once"
+    # New follow-ups default to until_page (empty tree allowed).
+    mode: str = "until_page"
     frames: int | None = None
     # Seconds to wait after main actions before the first post capture
     settle: float = 0.0

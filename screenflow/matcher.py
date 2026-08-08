@@ -215,6 +215,10 @@ class ScreenMatcher:
         if conf < self.runtime.match_threshold:
             return None
 
+        # Weak prefer hit — verify with full scan (avoids false sticky).
+        if conf < self.runtime.match_threshold + self.runtime.page_detect_near:
+            return None
+
         scores: dict[str, tuple[float, tuple[int, int] | None]] = {
             hint: (conf, center)
         }
@@ -223,35 +227,22 @@ class ScreenMatcher:
             scores[sibling] = self.match_template(
                 screen, self.page_templates[sibling]
             )
-        return self._commit_page_result(self._result_from_scores(scores))
+        result = self._result_from_scores(scores)
+        # Pair conflict / UNKNOWN must not block full scan of other pages.
+        if result.page_id == "UNKNOWN":
+            return None
+        return self._commit_page_result(result)
 
-    def _detect_full(self, screen: np.ndarray) -> MatchResult:
-        rt = self.runtime
+    def _detect_full(
+        self, screen: np.ndarray, *, commit_sticky: bool = True
+    ) -> MatchResult:
         scores: dict[str, tuple[float, tuple[int, int] | None]] = {}
-        items = list(self.page_templates.items())
-        for idx, (page_id, template) in enumerate(items):
+        for page_id, template in self.page_templates.items():
             scores[page_id] = self.match_template(screen, template)
-            if idx + 1 >= len(items):
-                break
-
-            ranked = sorted(scores.items(), key=lambda kv: kv[1][0], reverse=True)
-            best_id, (best_conf, _) = ranked[0]
-            if best_conf < rt.match_threshold:
-                continue
-            if len(ranked) < 2:
-                continue
-            second_conf = ranked[1][1][0]
-            if best_conf - second_conf <= rt.page_detect_near:
-                continue
-
-            sibling = self._pair_sibling(best_id)
-            if sibling and sibling in self.page_templates and sibling not in scores:
-                continue
-
-            # Clear lead over every scanned rival — skip the rest.
-            break
-
-        return self._commit_page_result(self._result_from_scores(scores))
+        result = self._result_from_scores(scores)
+        if commit_sticky:
+            return self._commit_page_result(result)
+        return result
 
     def detect_page(
         self,
@@ -259,6 +250,7 @@ class ScreenMatcher:
         *,
         prefer: str | None = None,
         force_full: bool = False,
+        commit_sticky: bool = True,
     ) -> MatchResult:
         if not force_full:
             hint = prefer if prefer is not None else self._sticky_page_id
@@ -266,7 +258,7 @@ class ScreenMatcher:
                 sticky_hit = self._detect_prefer(screen, hint)
                 if sticky_hit is not None:
                     return sticky_hit
-        return self._detect_full(screen)
+        return self._detect_full(screen, commit_sticky=commit_sticky)
 
     def find_click_target(
         self, screen: np.ndarray, key: str

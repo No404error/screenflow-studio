@@ -69,7 +69,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "param_runner_mode": "Engine process",
         "runner_mode_elevate": "Elevated subprocess (UAC)",
         "runner_mode_inline": "In-process (debug)",
-        "btn_apply": "Save run settings",
+        "btn_apply": "Apply to run",
         "btn_start": "Start",
         "btn_pause": "Pause",
         "btn_resume": "Continue",
@@ -180,6 +180,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "step_target_clear_var": "Variable name",
         "step_target_script": "Script path",
         "step_hold": "Hold duration (s)",
+        "step_params": "Script params (JSON)",
+        "step_ph_params": "{\"key\": \"value\"}",
+        "step_params_invalid": "Script params must be a JSON object (e.g. {\"n\": 1}).",
         "step_reason": "Note",
         "step_op_click": "Click",
         "step_op_key": "Key",
@@ -205,6 +208,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "status_waiting_admin": "Waiting for Administrator permission…",
         "status_running": "Current: {page} / {state}",
         "status_running_unknown": "Current: unrecognized",
+        "status_followup": "Follow-up on {page}: {detail}",
+        "status_followup_wait_page": "waiting for another page",
+        "status_followup_keep": "listening…",
+        "status_followup_unknown": "unrecognized page — still listening",
         "status_paused": "Paused · last: {page} / {state}",
         "status_paused_unknown": "Paused · last: unrecognized",
         "status_stopped": "Stopped",
@@ -263,7 +270,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_post_end_unknown": "End when page is unrecognized",
         "st_post_end_unknown_hint": "Off: skip unrecognized screens and continue observing",
         "val_post_empty": "{where}: follow-up has no cases — add at least one (not required for “Until another page”)",
-        "val_post_until_case_else": "{where}: “Until another case matches” should include an “other case”",
+        "val_post_until_case_else": "{where}: “Until Other case (ELSE)” should include an “other case”",
+        "val_post_mode": "{where}: unknown follow-up mode {mode!r}",
         "val_post_settle": "{where}: wait before first observation cannot be negative",
         "st_edit_post_tree": "Edit follow-up cases…",
         "st_path": "Location: {path}",
@@ -310,8 +318,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_src_click": "Click images",
         "st_mode_once": "Observe once",
         "st_mode_until_page": "Until another page",
-        "st_mode_until_case": "Until another case matches",
+        "st_mode_until_case": "Until Other case (ELSE)",
         "st_mode_frames": "Fixed count",
+        "st_mode_tag_once": "once",
+        "st_mode_tag_until_page": "until_page",
+        "st_mode_tag_until_case": "until_case",
+        "st_mode_tag_frames": "frames",
         "st_detail_else": "When nothing else matches",
         "st_detail_branch": "{n} nested cases",
         "st_detail_leaf": "{n} actions",
@@ -374,10 +386,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "help_case_post": (
             "After the main actions finish, optionally keep checking the screen for follow-up UI.\n"
             "• Enable follow-up — turn follow-up on or off for this case.\n"
-            "• Follow-up mode — Observe once; Until another page; Until another case matches; or Fixed count.\n"
-            "  Until another page — wait until the detected page changes; the follow-up case tree may be empty (optional actions while waiting).\n"
-            "  Until another case matches — keep observing until the follow-up tree picks the other-case (ELSE) branch.\n"
-            "• Observation count — how many captures when mode is Fixed count.\n"
+            "• Follow-up mode — Observe once; Until another page; Until Other case (ELSE); or Fixed count.\n"
+            "  Until another page — wait until the detected page changes; the follow-up case tree may be empty. A normal (non-ELSE) follow-up case runs its actions and keeps waiting until the page changes; ELSE does not re-run actions every frame (idle wait).\n"
+            "  Until Other case (ELSE) — keep observing until the follow-up tree picks the Other-case branch; a normal case hit runs its actions and continues.\n"
+            "• Observation count — how many observation attempts when mode is Fixed count (each attempt counts, including no-match / unrecognized-page skips).\n"
             "• Wait before first observation (s) — pause after actions so the UI can appear (e.g. 0.5).\n"
             "• End when page is unrecognized — stop follow-up if no page can be identified; Off skips those frames and continues.\n"
             "• Edit follow-up cases — the case tree used only during follow-up."
@@ -399,7 +411,8 @@ _STRINGS: dict[str, dict[str, str]] = {
             "• Hold duration (s) — how long to hold the key (Hold key only).\n"
             "• Note — optional comment (not executed).\n"
             "• Set / Clear variable — flags used by “Only when variable condition holds” on cases.\n"
-            "• Script path — optional project-relative Python script."
+            "• Script path — optional project-relative Python script.\n"
+            "• Script params (JSON) — optional object passed as params to run(ctx, params)."
         ),
         "help_macros": (
             "A macro is a reusable sequence of click/key/wait steps.\n"
@@ -480,7 +493,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "param_runner_mode": "引擎进程方式",
         "runner_mode_elevate": "提权子进程（UAC）",
         "runner_mode_inline": "本进程（调试）",
-        "btn_apply": "保存运行设置",
+        "btn_apply": "应用到运行",
         "btn_start": "开始",
         "btn_pause": "暂停",
         "btn_resume": "继续",
@@ -590,6 +603,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "step_target_clear_var": "变量名",
         "step_target_script": "脚本路径",
         "step_hold": "按住时长（秒）",
+        "step_params": "脚本参数（JSON）",
+        "step_ph_params": "{\"key\": \"value\"}",
+        "step_params_invalid": "脚本参数必须是 JSON 对象（例如 {\"n\": 1}）。",
         "step_reason": "备注",
         "step_op_click": "点击",
         "step_op_key": "按键",
@@ -615,6 +631,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "status_waiting_admin": "正在等待管理员权限…",
         "status_running": "当前：{page} / {state}",
         "status_running_unknown": "当前：未识别",
+        "status_followup": "后续观察中（{page}）：{detail}",
+        "status_followup_wait_page": "等待命中其他页面",
+        "status_followup_keep": "持续观察中…",
+        "status_followup_unknown": "页面未识别 — 仍在观察",
         "status_paused": "暂停 · 最后：{page} / {state}",
         "status_paused_unknown": "暂停 · 最后：未识别",
         "status_stopped": "已停止",
@@ -673,7 +693,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_post_end_unknown": "无法识别页面时结束",
         "st_post_end_unknown_hint": "关闭：跳过无法识别的画面并继续观察",
         "val_post_empty": "「{where}」：后续观察没有情况，请至少添加一个（「直到命中其他页面」可不配情况）",
-        "val_post_until_case_else": "「{where}」：「直到命中其它情况」建议包含一条「其它情况」",
+        "val_post_until_case_else": "「{where}」：「直到命中其它情况（ELSE）」建议包含一条「其它情况」",
+        "val_post_mode": "「{where}」：未知的后续观察模式 {mode!r}",
         "val_post_settle": "「{where}」：首次观察前等待不能为负数",
         "st_edit_post_tree": "编辑后续情况…",
         "st_path": "当前位置：{path}",
@@ -720,8 +741,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_src_click": "点击图",
         "st_mode_once": "只观察一次",
         "st_mode_until_page": "直到命中其他页面",
-        "st_mode_until_case": "直到命中其它情况",
+        "st_mode_until_case": "直到命中其它情况（ELSE）",
         "st_mode_frames": "固定次数",
+        "st_mode_tag_once": "once",
+        "st_mode_tag_until_page": "until_page",
+        "st_mode_tag_until_case": "until_case",
+        "st_mode_tag_frames": "frames",
         "st_detail_else": "其它未命中时",
         "st_detail_branch": "{n} 个下级情况",
         "st_detail_leaf": "{n} 个动作",
@@ -784,10 +809,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "help_case_post": (
             "主动作结束后，可继续检测后续界面。\n"
             "• 启用后续观察 — 是否为本情况开启后续观察。\n"
-            "• 观察模式 — 只观察一次；直到命中其他页面；直到命中其它情况；或固定次数。\n"
-            "  直到命中其他页面 — 等到定到别的页面才结束；后续情况树可为空（仅等换页；需要等待期间动作时再配情况）。\n"
-            "  直到命中其它情况 — 持续观察，直到后续情况树走到「其它情况」分支才结束。\n"
-            "• 观察次数 — 模式为「固定次数」时的截屏次数。\n"
+            "• 观察模式 — 只观察一次；直到命中其他页面；直到命中其它情况（ELSE）；或固定次数。\n"
+            "  直到命中其他页面 — 等到定到别的页面才结束；后续情况树可为空。命中普通（非 ELSE）后续情况会执行动作并继续等到换页；ELSE 不会每帧重打动作（空等换页）。\n"
+            "  直到命中其它情况（ELSE） — 持续观察直到走到「其它情况」；命中普通后续情况会执行动作并继续观察。\n"
+            "• 观察次数 — 模式为「固定次数」时的观察次数（每次尝试都计数，含未命中 / 跳过无法识别页面）。\n"
             "• 首次观察前等待（秒） — 动作结束后先等待再截第一张（如 0.5）。\n"
             "• 无法识别页面时结束 — 定不了页时结束本次后续观察；关闭则跳过并继续。\n"
             "• 编辑后续情况 — 仅在后续观察阶段使用的情况树。"
@@ -809,7 +834,8 @@ _STRINGS: dict[str, dict[str, str]] = {
             "• 按住时长（秒） — 「按住按键」时按住多久。\n"
             "• 备注 — 可选说明，不参与执行。\n"
             "• 设置 / 清除变量 — 供情况「仅当变量条件满足」使用的标记。\n"
-            "• 脚本路径 — 可选的项目内 Python 脚本。"
+            "• 脚本路径 — 可选的项目内 Python 脚本。\n"
+            "• 脚本参数（JSON） — 可选对象，作为 params 传给 run(ctx, params)。"
         ),
         "help_macros": (
             "宏是可复用的点击/按键/等待步骤序列。\n"

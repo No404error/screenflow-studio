@@ -162,9 +162,16 @@ class StateTreeEditor(QWidget):
 
     changed = Signal()
 
-    def __init__(self, t: Callable[..., str], parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        t: Callable[..., str],
+        parent: QWidget | None = None,
+        *,
+        allow_nested_post: bool = True,
+    ) -> None:
         super().__init__(parent)
         self._t = t
+        self._allow_nested_post = allow_nested_post
         self.roots: list[StateNode] = []
         self._selected_id: str | None = None
         self._loading = False
@@ -352,6 +359,9 @@ class StateTreeEditor(QWidget):
         self.btn_edit_post_tree.clicked.connect(self._edit_post_tree)
         pl.addWidget(self.btn_edit_post_tree)
         right_l.addWidget(self.grp_post)
+        if not self._allow_nested_post:
+            self.hdr_post.setVisible(False)
+            self.grp_post.setVisible(False)
 
         trow = QHBoxLayout()
         self.btn_save_tpl = QPushButton()
@@ -555,6 +565,18 @@ class StateTreeEditor(QWidget):
 
         return {n.id for n in iter_tree(self.roots)}
 
+    def _post_mode_tag(self, post) -> str:
+        from screenflow.models import normalize_post_mode
+
+        mode = normalize_post_mode(getattr(post, "mode", None))
+        key = {
+            "once": "st_mode_tag_once",
+            "until_page": "st_mode_tag_until_page",
+            "until_case": "st_mode_tag_until_case",
+            "frames": "st_mode_tag_frames",
+        }.get(mode, "st_mode_tag_until_page")
+        return self.t(key)
+
     def _item_label(self, node: StateNode) -> tuple[str, str]:
         name = node.display_name()
         if node.is_else:
@@ -562,8 +584,8 @@ class StateTreeEditor(QWidget):
         if node.children:
             return name, self.t("st_detail_branch", n=len(node.children))
         n_act = len(node.actions)
-        extra = self.t("st_detail_post") if node.post else ""
-        if extra:
+        if node.post:
+            extra = f"{self.t('st_detail_post')} ({self._post_mode_tag(node.post)})"
             return name, self.t("st_detail_leaf", n=n_act) + " · " + extra
         return name, self.t("st_detail_leaf", n=n_act)
 
@@ -713,12 +735,14 @@ class StateTreeEditor(QWidget):
             self.spin_settle.setValue(float(node.post.settle or 0.0))
             self.chk_end_unknown.setChecked(bool(node.post.end_on_unknown))
         else:
+            mi = self.cmb_post_mode.findData("until_page")
+            self.cmb_post_mode.setCurrentIndex(max(0, mi))
             self.spin_settle.setValue(0.0)
             self.chk_end_unknown.setChecked(False)
         leaf = node.is_leaf()
         # ELSE leaves still run actions / post-listen in the engine.
         self.grp_actions.setEnabled(leaf)
-        self.grp_post.setEnabled(leaf)
+        self.grp_post.setEnabled(leaf and self._allow_nested_post)
         self._on_else_toggled_ui(node.is_else)
         self._update_score_visibility()
         self._update_post_visibility()
@@ -757,7 +781,7 @@ class StateTreeEditor(QWidget):
         self.spin_const.setEnabled(is_const and not self.chk_else.isChecked())
 
     def _update_post_visibility(self) -> None:
-        mode = self.cmb_post_mode.currentData() or "once"
+        mode = self.cmb_post_mode.currentData() or "until_page"
         self.spin_frames.setEnabled(mode == "frames")
 
     def _on_drop_rejected(self, key: str) -> None:
@@ -974,15 +998,18 @@ class StateTreeEditor(QWidget):
             )
         if node.is_leaf():
             node.actions = self.steps.get_steps()
-            if self.chk_post.isChecked():
+            if self._allow_nested_post and self.chk_post.isChecked():
                 if node.post is None:
                     node.post = PostListen(
-                        mode=str(self.cmb_post_mode.currentData() or "once"), tree=[]
+                        mode=str(
+                            self.cmb_post_mode.currentData() or "until_page"
+                        ),
+                        tree=[],
                     )
                 from screenflow.models import normalize_post_mode
 
                 node.post.mode = normalize_post_mode(
-                    str(self.cmb_post_mode.currentData() or "once")
+                    str(self.cmb_post_mode.currentData() or "until_page")
                 )
                 if node.post.mode == "frames":
                     node.post.frames = int(self.spin_frames.value())
@@ -990,7 +1017,10 @@ class StateTreeEditor(QWidget):
                     node.post.frames = None
                 node.post.settle = float(self.spin_settle.value())
                 node.post.end_on_unknown = self.chk_end_unknown.isChecked()
-            else:
+            elif self._allow_nested_post:
+                node.post = None
+            # When editing a follow-up tree, never attach nested post configs.
+            elif not self._allow_nested_post:
                 node.post = None
 
         need_rebuild = allow_rebuild and (rebuild or pri_changed)
@@ -1071,14 +1101,24 @@ class StateTreeEditor(QWidget):
         dlg.setWindowTitle(self.t("st_edit_post_tree"))
         dlg.resize(720, 560)
         lay = QVBoxLayout(dlg)
-        editor = StateTreeEditor(self._t)
+        editor = StateTreeEditor(self._t, allow_nested_post=False)
         editor.set_catalog(self._catalog_macros, self._catalog_clicks)
         editor.set_page_context(self._project_for_tpl, self._page_id)
         editor.bind(node.post.tree)
         lay.addWidget(editor)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
         lay.addWidget(buttons)
-        dlg.exec()
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        # Nested posts are not executed by the engine — strip if any slipped in.
+        from screenflow.project import iter_tree
+
+        for n in iter_tree(node.post.tree):
+            n.post = None
         self.changed.emit()
         self._rebuild_tree()

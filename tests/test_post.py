@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 
@@ -103,7 +103,8 @@ def test_until_miss_alias_ends_on_else():
     assert out.ended and out.used_else
 
 
-def test_until_page_continues_on_else():
+def test_until_page_else_skips_actions():
+    """until_page + ELSE must not re-fire actions every poll."""
     listen = PostListen(
         mode="until_page",
         tree=[
@@ -132,8 +133,10 @@ def test_until_page_continues_on_else():
         current_page_id="p",
     )
     assert not out.ended
+    assert out.skipped
     assert out.used_else
-    run_steps.assert_called_once()
+    assert out.detail.get("reason") == "until_page_else_wait"
+    run_steps.assert_not_called()
 
 
 def test_until_page_empty_tree_waits_then_ends_on_page_change():
@@ -302,8 +305,7 @@ def test_validate_post_empty_and_until_case():
         assert any(i.level == "error" for i in issues)
 
 
-@patch("screenflow.engine.time.sleep")
-def test_engine_settle_before_first_post(mock_sleep, tmp_path):
+def test_engine_settle_before_first_post(tmp_path):
     import cv2
     from screenflow.engine import FlowEngine
     from screenflow.project import rebuild_resource_index
@@ -358,10 +360,153 @@ def test_engine_settle_before_first_post(mock_sleep, tmp_path):
         return_value=MatchResult(page_id="p", confidence=0.99, center=(1, 1))
     )
     eng.actions.run_steps = MagicMock(return_value=True)
+    settles: list[float] = []
+
+    def _settle(seconds, is_running=None, **kwargs):
+        settles.append(float(seconds))
+        return True
+
+    eng.input.interruptible_sleep = _settle  # type: ignore[method-assign]
 
     eng.dispatch(
         np.zeros((8, 8, 3), dtype=np.uint8),
         MatchResult(page_id="p", confidence=0.9, center=(1, 1)),
     )
-    mock_sleep.assert_called_with(0.8)
+    assert 0.8 in settles
     assert eng._sticky is not None
+
+
+def test_until_case_else_runs_actions_and_ends():
+    listen = PostListen(
+        mode="until_case",
+        tree=[
+            StateNode(
+                id="hit",
+                score=ScoreSpec(kind="constant", constant=0.1),
+                actions=[],
+            ),
+            StateNode(
+                id="e",
+                is_else=True,
+                actions=[ActionStep("wait", 0.0)],
+            ),
+        ],
+    )
+    sticky = StickyPost(page_id="p", listen=listen, mode="until_case")
+    project = _proj()
+    matcher = MagicMock()
+    matcher.runtime = project.runtime
+    matcher.match_detect.return_value = (0.0, None)
+    matcher.match_click.return_value = (0.0, None)
+    run_steps = MagicMock(return_value=True)
+    engine = SimpleNamespace(
+        vars={}, actions=SimpleNamespace(run_steps=run_steps), project=project
+    )
+    out = run_post_listen(
+        project,
+        matcher,
+        engine,
+        sticky,
+        np.zeros((4, 4, 3), dtype=np.uint8),
+        current_page_id="p",
+    )
+    assert out.ended
+    assert out.used_else
+    assert out.leaf is not None and out.leaf.is_else
+    run_steps.assert_called_once()
+    assert run_steps.call_args.args[0][0].op == "wait"
+
+
+def test_frames_no_match_consumes_budget():
+    listen = PostListen(
+        mode="frames",
+        frames=2,
+        tree=[
+            StateNode(
+                id="hit",
+                score=ScoreSpec(kind="constant", constant=0.99),
+                actions=[],
+            )
+        ],
+    )
+    sticky = StickyPost(page_id="p", listen=listen, mode="frames", frames_left=2)
+    project = _proj(runtime=RuntimeConfig(match_threshold=0.99))
+    matcher = MagicMock()
+    matcher.runtime = project.runtime
+    # Force no leaf: constant 0.99 but threshold 0.99 with compete may still win...
+    # Use below-threshold constant via high threshold and no ELSE.
+    listen.tree[0].score = ScoreSpec(kind="constant", constant=0.1)
+    engine = SimpleNamespace(
+        vars={},
+        actions=SimpleNamespace(run_steps=MagicMock(return_value=True)),
+        project=project,
+    )
+    out1 = run_post_listen(
+        project,
+        matcher,
+        engine,
+        sticky,
+        np.zeros((3, 3, 3), dtype=np.uint8),
+        current_page_id="p",
+    )
+    assert not out1.ended
+    assert out1.skipped
+    assert sticky.frames_left == 1
+    out2 = run_post_listen(
+        project,
+        matcher,
+        engine,
+        sticky,
+        np.zeros((3, 3, 3), dtype=np.uint8),
+        current_page_id="p",
+    )
+    assert out2.ended
+    assert out2.detail.get("reason") == "frames_exhausted"
+    assert sticky.frames_left == 0
+
+
+def test_until_case_ends_on_nested_leaf_else():
+    """Parent layer may not be ELSE; leaf is_else still ends until_case."""
+    listen = PostListen(
+        mode="until_case",
+        tree=[
+            StateNode(
+                id="branch",
+                score=ScoreSpec(kind="constant", constant=0.99),
+                children=[
+                    StateNode(
+                        id="child_miss",
+                        score=ScoreSpec(kind="constant", constant=0.1),
+                        actions=[],
+                    ),
+                    StateNode(
+                        id="child_else",
+                        is_else=True,
+                        actions=[ActionStep("wait", 0.0)],
+                    ),
+                ],
+            ),
+        ],
+    )
+    sticky = StickyPost(page_id="p", listen=listen, mode="until_case")
+    project = _proj(runtime=RuntimeConfig(match_threshold=0.5))
+    matcher = MagicMock()
+    matcher.runtime = project.runtime
+    matcher.match_detect.return_value = (0.0, None)
+    matcher.match_click.return_value = (0.0, None)
+    run_steps = MagicMock(return_value=True)
+    engine = SimpleNamespace(
+        vars={}, actions=SimpleNamespace(run_steps=run_steps), project=project
+    )
+    out = run_post_listen(
+        project,
+        matcher,
+        engine,
+        sticky,
+        np.zeros((4, 4, 3), dtype=np.uint8),
+        current_page_id="p",
+    )
+    assert out.ended
+    assert out.used_else
+    assert out.leaf and out.leaf.id == "child_else"
+    run_steps.assert_called_once()

@@ -112,7 +112,7 @@ def test_sticky_pair_compares_sibling(tmp_path: Path):
     assert set(calls) == {"cultivate", "forge"}
 
 
-def test_early_stop_skips_remaining_templates(tmp_path: Path):
+def test_full_scan_matches_all_page_templates(tmp_path: Path):
     ids = [f"p{i}" for i in range(5)]
     proj = _project(tmp_path, ids)
     m = ScreenMatcher(proj)
@@ -127,10 +127,40 @@ def test_early_stop_skips_remaining_templates(tmp_path: Path):
         return real_match(screen, template, **kwargs)
 
     with patch.object(m, "match_template", side_effect=counting_match):
-        r = m.detect_page(screen)
+        r = m.detect_page(screen, force_full=True)
 
     assert r.page_id == "p0"
-    assert calls["n"] < len(ids), f"expected early stop, matched {calls['n']}"
+    assert calls["n"] == len(ids)
+
+
+def test_prefer_unknown_falls_through_to_full(tmp_path: Path):
+    proj = _project(tmp_path, ["a", "b", "c"])
+    set_page_pair(proj, "a", "b")
+    proj.page_pairs = list_page_pairs(proj)
+    m = ScreenMatcher(proj)
+
+    # Force prefer path to produce UNKNOWN via compete_page_pair
+    with patch.object(
+        m,
+        "match_template",
+        side_effect=[(0.99, (1, 1)), (0.98, (1, 1))],
+    ):
+        with patch(
+            "screenflow.matcher.compete_page_pair", return_value=None
+        ):
+            hit = m._detect_prefer(_screen(tmp_path, "a"), "a")
+    assert hit is None
+
+
+def test_prefer_weak_hit_falls_through(tmp_path: Path):
+    proj = _project(tmp_path, ["a", "b"])
+    m = ScreenMatcher(proj)
+    # Just above threshold but below threshold+near → must fall through
+    thr = proj.runtime.match_threshold
+    near = proj.runtime.page_detect_near
+    weak = thr + near * 0.5
+    with patch.object(m, "match_template", return_value=(weak, (1, 1))):
+        assert m._detect_prefer(_screen(tmp_path, "a"), "a") is None
 
 
 def test_clear_page_sticky(tmp_path: Path):

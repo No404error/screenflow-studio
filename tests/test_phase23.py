@@ -25,6 +25,7 @@ def test_invert_score():
 
     class M:
         runtime = SimpleNamespace(match_threshold=0.72)
+        detect = {"p/k": object()}
 
         def match_detect(self, screen, key, *, roi=None):
             return 0.2, None
@@ -33,6 +34,25 @@ def test_invert_score():
             return 0.0, None
 
     assert abs(score_node(node, np.zeros((4, 4, 3), dtype=np.uint8), M(), "p") - 0.8) < 1e-6
+
+
+def test_invert_missing_template_scores_zero():
+    node = StateNode(
+        id="i",
+        score=ScoreSpec(kind="invert", key="missing", source="detect"),
+    )
+
+    class M:
+        runtime = SimpleNamespace(match_threshold=0.72)
+        detect = {}
+
+        def match_detect(self, screen, key, *, roi=None):
+            return 0.0, None
+
+        def match_click(self, screen, key, *, roi=None):
+            return 0.0, None
+
+    assert score_node(node, np.zeros((4, 4, 3), dtype=np.uint8), M(), "p") == 0.0
 
 
 def test_when_var_filters():
