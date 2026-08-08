@@ -19,8 +19,7 @@ def _runner(tmp_path: Path, script_body: str) -> ActionRunner:
         root=tmp_path,
         runtime=RuntimeConfig(),
         pages={},
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     return ActionRunner(
         project,

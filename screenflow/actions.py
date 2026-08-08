@@ -104,7 +104,9 @@ class ActionRunner:
                 assert isinstance(step.target, str)
                 click_key = self._resolve_click_key(page_id, str(step.target))
                 if click_key is None:
-                    self.log.info(f"Action: click target not found: {step.target}")
+                    self.log.info(
+                        f"Action: click image missing from library: {step.target}"
+                    )
                     return False
                 pos = self.matcher.find_click_target(frame, click_key)
                 if pos is None:
@@ -112,7 +114,9 @@ class ActionRunner:
                     frame = self.matcher.capture_screen()
                     pos = self.matcher.find_click_target(frame, click_key)
                 if pos is None:
-                    self.log.info(f"Action: click target not found: {step.target}")
+                    self.log.info(
+                        f"Action: click image not matched on screen: {step.target}"
+                    )
                     return False
                 self.log.detail(f"  at {pos}")
                 if not self.input.click(*pos, force=False, is_running=self._is_running):
@@ -187,7 +191,7 @@ class ActionRunner:
         target = (target or "").strip()
         if not target:
             return None
-        store = self.matcher.click
+        store = self.matcher.features
         if not page_id:
             return target if target in store else None
         scoped = scoped_asset_key(page_id, target)

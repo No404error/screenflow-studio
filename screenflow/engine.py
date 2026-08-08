@@ -302,7 +302,10 @@ class FlowEngine:
                 capture_ms = (time.perf_counter() - t) * 1000.0
 
                 t = time.perf_counter()
-                page_result = self.matcher.detect_page(screen)
+                # Verbose: full page scan so detail lists every page score.
+                page_result = self.matcher.detect_page(
+                    screen, force_full=self.elog.verbose
+                )
                 match_ms = (time.perf_counter() - t) * 1000.0
 
                 self.elog.frame(

@@ -15,8 +15,7 @@ def _blank(root: Path) -> Project:
         root=root,
         runtime=RuntimeConfig(),
         pages={},
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
 
 
@@ -39,7 +38,7 @@ def test_reject_probe():
             root,
             "p",
             {
-                "detect": "pages/p/detect/main.png",
+                "detect": "pages/p/features/main.png",
                 "probe_steps": [{"op": "wait", "target": 0.1}],
                 "state_tree": [],
             },
@@ -60,7 +59,7 @@ def test_legacy_flat_static_ok():
             root,
             "p",
             {
-                "detect": "pages/p/detect/main.png",
+                "detect": "pages/p/features/main.png",
                 "states": [
                     {
                         "name": "A",
@@ -119,7 +118,7 @@ def test_monolith_pages_rejected():
                     "pages": [
                         {
                             "id": "p",
-                            "detect": "pages/p/detect/main.png",
+                            "detect": "pages/p/features/main.png",
                             "state_tree": [],
                         }
                     ],
@@ -137,12 +136,12 @@ def test_roundtrip_tree():
         proj = _blank(root)
         proj.pages["p"] = PageDef(
             page_id="p",
-            detect_relpath="pages/p/detect/main.png",
+            detect_relpath="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="leaf",
                     name="Leaf",
-                    score=ScoreSpec(key="k", source="detect"),
+                    score=ScoreSpec(key="k"),
                     actions=[ActionStep("wait", 0.2)],
                 )
             ],
@@ -160,7 +159,7 @@ def test_invert_score_roundtrip():
         proj = _blank(root)
         proj.pages["p"] = PageDef(
             page_id="p",
-            detect_relpath="pages/p/detect/main.png",
+            detect_relpath="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="inv",
@@ -168,7 +167,7 @@ def test_invert_score_roundtrip():
                     score=ScoreSpec(
                         kind="invert",
                         key="gone",
-                        source="detect",
+                        
                         roi=[0.1, 0.9, 0.1, 0.9],
                     ),
                     actions=[],
@@ -193,7 +192,7 @@ def test_decide_params_on_close_roundtrip():
         proj = _blank(root)
         proj.pages["p"] = PageDef(
             page_id="p",
-            detect_relpath="pages/p/detect/main.png",
+            detect_relpath="pages/p/features/main.png",
             decide_params=DecideParams(margin=0.05, on_close="abstain"),
             state_tree=[StateNode(id="DEFAULT", is_else=True, actions=[])],
         )

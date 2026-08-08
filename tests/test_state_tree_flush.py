@@ -66,3 +66,19 @@ def test_flush_else_keeps_actions():
     assert a.score is None
     assert len(a.actions) == 1
     assert a.actions[0].op == "wait"
+
+
+def test_else_hides_score_fields():
+    from PySide6.QtWidgets import QApplication
+    import sys
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    editor = StateTreeEditor(_T())
+    a = StateNode(id="a", name="A", score=ScoreSpec(key="main"), priority=10)
+    editor.bind([a], select_id="a")
+    assert not editor.cmb_score_kind.isHidden()
+    editor.chk_else.setChecked(True)
+    assert editor.cmb_score_kind.isHidden()
+    assert editor.cmb_key.isHidden()
+    editor.chk_else.setChecked(False)
+    assert not editor.cmb_score_kind.isHidden()

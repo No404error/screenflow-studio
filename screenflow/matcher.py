@@ -6,9 +6,10 @@ import cv2
 import mss
 import numpy as np
 
-from screenflow.assets import resolve_asset_path
+from screenflow.assets import resolve_asset_path, scoped_asset_key
 from screenflow.compete import compete_page_pair
 from screenflow.models import DecideParams, MatchResult, Project, RuntimeConfig
+from screenflow.roi import expand_roi_for_search, normalize_roi
 
 
 def imread_unicode(path: Path) -> np.ndarray:
@@ -26,8 +27,9 @@ class ScreenMatcher:
         self.project = project
         self.runtime = project.runtime
         self.page_templates: dict[str, np.ndarray] = {}
-        self.detect: dict[str, np.ndarray] = {}
-        self.click: dict[str, np.ndarray] = {}
+        self.page_rois: dict[str, tuple[float, float, float, float]] = {}
+        self.features: dict[str, np.ndarray] = {}
+        self.feature_rois: dict[str, tuple[float, float, float, float]] = {}
         self._sct = None
         self._sticky_page_id: str | None = None
         self._load()
@@ -37,21 +39,34 @@ class ScreenMatcher:
             path = resolve_asset_path(self.project, page.detect_relpath)
             if path.exists():
                 self.page_templates[page_id] = imread_unicode(path)
+            proi = normalize_roi(page.detect_roi)
+            if proi is None:
+                stem = Path(page.detect_relpath).stem
+                proi = normalize_roi(page.feature_rois.get(stem))
+            if proi is not None:
+                self.page_rois[page_id] = proi
+            for name, raw in page.feature_rois.items():
+                nroi = normalize_roi(raw)
+                if nroi is None:
+                    continue
+                self.feature_rois[scoped_asset_key(page_id, name)] = nroi
+                self.feature_rois.setdefault(name, nroi)
 
-        for key, rel in self.project.detect_files.items():
+        for key, rel in self.project.feature_files.items():
             path = resolve_asset_path(self.project, rel)
             if path.exists():
-                self.detect[key] = imread_unicode(path)
-
-        for key, rel in self.project.click_files.items():
-            path = resolve_asset_path(self.project, rel)
-            if path.exists():
-                self.click[key] = imread_unicode(path)
+                self.features[key] = imread_unicode(path)
 
         if not self.page_templates:
             raise RuntimeError(
                 f"No page detect images under {self.project.root / 'pages'}"
             )
+
+    def store_roi(
+        self, key: str
+    ) -> tuple[float, float, float, float] | None:
+        """Asset-level ROI for a feature store key, if any."""
+        return self.feature_rois.get(key)
 
     def clear_page_sticky(self) -> None:
         self._sticky_page_id = None
@@ -80,9 +95,24 @@ class ScreenMatcher:
         template: np.ndarray,
         *,
         full_size: tuple[int, int] | None = None,
+        roi: tuple[float, float, float, float] | None = None,
     ) -> tuple[float, tuple[int, int] | None]:
         sh, sw = screen.shape[:2]
         fw, fh = full_size if full_size else (sw, sh)
+        nroi = normalize_roi(roi)
+        if nroi is not None:
+            # Crop templates are the same size as the drawn ROI. Without pad,
+            # matchTemplate cannot slide and small UI jitter tanks confidence.
+            y0, y1, x0, x1 = expand_roi_for_search(nroi)
+            px0, py0 = int(sw * x0), int(sh * y0)
+            px1, py1 = int(sw * x1), int(sh * y1)
+            if px1 <= px0 or py1 <= py0:
+                return 0.0, None
+            region = screen[py0:py1, px0:px1]
+            conf, center = self.match_template(region, template, full_size=(fw, fh))
+            if center is None:
+                return conf, None
+            return conf, (center[0] + px0, center[1] + py0)
         tpl = self._scale_template(template, fw, fh)
         th, tw = tpl.shape[:2]
         if th > sh or tw > sw:
@@ -91,44 +121,18 @@ class ScreenMatcher:
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
         return float(max_val), (max_loc[0] + tw // 2, max_loc[1] + th // 2)
 
-    def _match_store(
+    def match_feature(
         self,
-        store: dict[str, np.ndarray],
         screen: np.ndarray,
         key: str,
         *,
         roi: tuple[float, float, float, float] | None = None,
     ) -> tuple[float, tuple[int, int] | None]:
-        tpl = store.get(key)
+        tpl = self.features.get(key)
         if tpl is None:
             return 0.0, None
-        h, w = screen.shape[:2]
-        if roi is None:
-            return self.match_template(screen, tpl)
-        y0, y1, x0, x1 = roi
-        region = screen[int(h * y0) : int(h * y1), int(w * x0) : int(w * x1)]
-        conf, center = self.match_template(region, tpl, full_size=(w, h))
-        if center is None:
-            return conf, None
-        return conf, (center[0] + int(w * x0), center[1] + int(h * y0))
-
-    def match_detect(
-        self,
-        screen: np.ndarray,
-        key: str,
-        *,
-        roi: tuple[float, float, float, float] | None = None,
-    ) -> tuple[float, tuple[int, int] | None]:
-        return self._match_store(self.detect, screen, key, roi=roi)
-
-    def match_click(
-        self,
-        screen: np.ndarray,
-        key: str,
-        *,
-        roi: tuple[float, float, float, float] | None = None,
-    ) -> tuple[float, tuple[int, int] | None]:
-        return self._match_store(self.click, screen, key, roi=roi)
+        use_roi = normalize_roi(roi) or self.store_roi(key)
+        return self.match_template(screen, tpl, roi=use_roi)
 
     def _pair_sibling(self, page_id: str) -> str | None:
         for a, b in self.project.page_pairs:
@@ -138,12 +142,19 @@ class ScreenMatcher:
                 return a
         return None
 
+    @staticmethod
+    def _scores_map(
+        scores: dict[str, tuple[float, tuple[int, int] | None]],
+    ) -> dict[str, float]:
+        return {pid: float(conf) for pid, (conf, _) in scores.items()}
+
     def _result_from_scores(
         self, scores: dict[str, tuple[float, tuple[int, int] | None]]
     ) -> MatchResult:
         rt = self.runtime
+        score_map = self._scores_map(scores)
         if not scores:
-            return MatchResult("UNKNOWN", 0.0, None)
+            return MatchResult("UNKNOWN", 0.0, None, score_map)
 
         candidates = [
             (pid, conf, center)
@@ -152,7 +163,9 @@ class ScreenMatcher:
         ]
         if not candidates:
             best = max(scores, key=lambda p: scores[p][0])
-            return MatchResult("UNKNOWN", scores[best][0], None)
+            return MatchResult(
+                "UNKNOWN", scores[best][0], None, score_map
+            )
 
         top_conf = max(c for _, c, _ in candidates)
         near = [x for x in candidates if top_conf - x[1] <= rt.page_detect_near]
@@ -185,15 +198,12 @@ class ScreenMatcher:
                             "UNKNOWN",
                             best_conf,
                             None,
-                            {
-                                a: scores.get(a, (0.0, None))[0],
-                                b: scores.get(b, (0.0, None))[0],
-                            },
+                            score_map,
                         )
                     sc, cen = scores[win]
-                    return MatchResult(win, sc, cen)
+                    return MatchResult(win, sc, cen, score_map)
 
-        return MatchResult(best_id, best_conf, best_center)
+        return MatchResult(best_id, best_conf, best_center, score_map)
 
     def _commit_page_result(self, result: MatchResult) -> MatchResult:
         if result.page_id == "UNKNOWN":
@@ -211,7 +221,9 @@ class ScreenMatcher:
         tpl = self.page_templates.get(hint)
         if tpl is None:
             return None
-        conf, center = self.match_template(screen, tpl)
+        conf, center = self.match_template(
+            screen, tpl, roi=self.page_rois.get(hint)
+        )
         if conf < self.runtime.match_threshold:
             return None
 
@@ -225,7 +237,9 @@ class ScreenMatcher:
         sibling = self._pair_sibling(hint)
         if sibling and sibling in self.page_templates:
             scores[sibling] = self.match_template(
-                screen, self.page_templates[sibling]
+                screen,
+                self.page_templates[sibling],
+                roi=self.page_rois.get(sibling),
             )
         result = self._result_from_scores(scores)
         # Pair conflict / UNKNOWN must not block full scan of other pages.
@@ -238,7 +252,9 @@ class ScreenMatcher:
     ) -> MatchResult:
         scores: dict[str, tuple[float, tuple[int, int] | None]] = {}
         for page_id, template in self.page_templates.items():
-            scores[page_id] = self.match_template(screen, template)
+            scores[page_id] = self.match_template(
+                screen, template, roi=self.page_rois.get(page_id)
+            )
         result = self._result_from_scores(scores)
         if commit_sticky:
             return self._commit_page_result(result)
@@ -263,10 +279,12 @@ class ScreenMatcher:
     def find_click_target(
         self, screen: np.ndarray, key: str
     ) -> tuple[int, int] | None:
-        template = self.click.get(key)
+        template = self.features.get(key)
         if template is None:
             return None
-        conf, center = self.match_template(screen, template)
+        conf, center = self.match_template(
+            screen, template, roi=self.feature_rois.get(key)
+        )
         if conf >= self.runtime.match_threshold and center:
             return center
         return None

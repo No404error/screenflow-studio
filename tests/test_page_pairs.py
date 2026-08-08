@@ -17,8 +17,7 @@ def _proj(*ids: str) -> Project:
         root=Path("."),
         runtime=RuntimeConfig(),
         pages=pages,
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
 
 

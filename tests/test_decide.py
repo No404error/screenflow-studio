@@ -16,14 +16,14 @@ class FakeMatcher:
         self.scores = scores
         self.runtime = SimpleNamespace(match_threshold=0.72)
         # Membership drives scoped resolve; values are placeholders.
-        self.detect = {k: object() for k in scores}
-        self.click = {k: object() for k in scores}
+        self.features = {k: object() for k in scores}
 
+    def match_feature(self, screen, key, *, roi=None):
+        return self.scores.get(key, 0.0), (1, 1)
+
+    # Older decide fallback for test doubles without match_feature.
     def match_detect(self, screen, key, *, roi=None):
-        return self.scores.get(key, 0.0), (1, 1)
-
-    def match_click(self, screen, key, *, roi=None):
-        return self.scores.get(key, 0.0), (1, 1)
+        return self.match_feature(screen, key, roi=roi)
 
 
 def test_decide_path_and_else():
@@ -32,7 +32,7 @@ def test_decide_path_and_else():
             id="a",
             name="A",
             priority=10,
-            score=ScoreSpec(key="page/a", source="detect"),
+            score=ScoreSpec(key="page/a"),
         ),
         StateNode(id="e", name="Else", is_else=True, actions=[]),
     ]
@@ -50,13 +50,13 @@ def test_decide_children():
             id="parent",
             name="Parent",
             priority=10,
-            score=ScoreSpec(key="page/p", source="detect"),
+            score=ScoreSpec(key="page/p"),
             children=[
                 StateNode(
                     id="child",
                     name="Child",
                     priority=1,
-                    score=ScoreSpec(key="page/c", source="detect"),
+                    score=ScoreSpec(key="page/c"),
                     actions=[],
                 )
             ],

@@ -13,6 +13,16 @@ _ZH_HINTS = (
     ("no matching state", "无匹配状态"),
     ("waiting for another page", "等待命中其他页面"),
     ("no follow-up case — keep waiting", "后续情况未命中 — 继续等待"),
+    (
+        "click image missing from library:",
+        "点击图不在特征图库中:",
+    ),
+    (
+        "click image not matched on screen:",
+        "点击图在画面上未匹配到:",
+    ),
+    ("Action pack aborted — skip follow-up", "动作包中止 — 跳过后续观察"),
+    ("page scores:", "各页得分:"),
     ("Action:", "动作:"),
     ("RUNNING", "运行中"),
     ("PAUSED", "已暂停"),
@@ -87,8 +97,14 @@ class EngineLog:
             line += " [paused]"
         self.info(line)
         if self.verbose and page_result.scores:
-            scores = " ".join(f"{k}={v:.2f}" for k, v in page_result.scores.items())
-            self.detail(f"  candidates: {scores}")
+            ranked = sorted(
+                page_result.scores.items(), key=lambda kv: kv[1], reverse=True
+            )
+            parts = [
+                f"{self.page_label(project, pid)}={conf:.2f}"
+                for pid, conf in ranked
+            ]
+            self.detail(f"  page scores: {', '.join(parts)}")
 
     def status(self, name: str) -> None:
         self.info(f">>> {name}")

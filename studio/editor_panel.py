@@ -432,7 +432,7 @@ class EditorPanel(QWidget):
         has = bool(
             self.project
             and page_id
-            and list_page_assets(self.project, page_id, "detect")
+            and list_page_assets(self.project, page_id)
         )
         self.lbl_page_hint.setVisible(not has)
 
@@ -449,7 +449,7 @@ class EditorPanel(QWidget):
         if not self.project or not page_id:
             self.cmb_page_detect.blockSignals(False)
             return
-        for a in list_page_assets(self.project, page_id, "detect"):
+        for a in list_page_assets(self.project, page_id):
             self.cmb_page_detect.addItem(a.name, a.relpath)
         if keep:
             idx = self.cmb_page_detect.findText(str(keep))
@@ -488,9 +488,19 @@ class EditorPanel(QWidget):
             self, self.t("asset_name_title"), self.t("asset_name_label")
         )
         preferred = name.strip() if ok and name.strip() else "main"
+        from studio.roi_crop_dialog import prompt_upload_with_roi
+
+        cropped = prompt_upload_with_roi(self, self.t, path)
+        if cropped is None:
+            return
+        use_path, roi = cropped
         try:
             asset = upload_page_asset(
-                self.project, page_id, "detect", path, preferred_name=preferred
+                self.project,
+                page_id,
+                use_path,
+                preferred_name=preferred,
+                roi=roi,
             )
         except Exception as exc:
             QMessageBox.critical(self, self.t("err_title"), str(exc))
@@ -498,6 +508,12 @@ class EditorPanel(QWidget):
         page = self.project.pages[page_id]
         sync_page_asset_maps(self.project, page)
         page.detect_relpath = asset.relpath
+        if roi:
+            page.detect_roi = list(roi)
+            page.feature_rois[asset.name] = list(roi)
+        else:
+            page.detect_roi = None
+            page.feature_rois.pop(asset.name, None)
         self.page_assets.refresh()
         self._refresh_page_detect_combo(selected=asset.name)
         self.project_changed.emit()
@@ -524,6 +540,10 @@ class EditorPanel(QWidget):
         rel = self.cmb_page_detect.currentData()
         if rel:
             page.detect_relpath = str(rel)
+            stem = asset_name_from_relpath(str(rel))
+            page.detect_roi = (
+                list(page.feature_rois[stem]) if stem in page.feature_rois else None
+            )
         page.detect_priority = self.spin_page_pri.value()
         pair = self.cmb_page_pair.currentData()
         set_page_pair(self.project, page_id, str(pair) if pair else None)
@@ -542,6 +562,8 @@ class EditorPanel(QWidget):
         if refresh_nav:
             self.request_refresh_tree.emit()
             self._set_title_for_ctx()
+        # Refresh feature detail (e.g. “page recognition image” flag).
+        self.page_assets.refresh()
 
     def _rebuild_page_on_close_combo(self, *, keep: object = None) -> None:
         t = self.t
@@ -645,7 +667,7 @@ class EditorPanel(QWidget):
 
         editor = StateTreeEditor(self.t, allow_nested_post=False)
         macros = [(mid, m.name or mid) for mid, m in self.project.macros.items()]
-        editor.set_catalog(macros, sorted(page.click_map.keys()))
+        editor.set_catalog(macros, sorted(page.feature_map.keys()))
         editor.set_page_context(self.project, page_id)
         editor.bind(draft.tree)
         lay.addWidget(editor)
@@ -688,27 +710,27 @@ class EditorPanel(QWidget):
         page = self.project.pages[page_id]
         sync_page_asset_maps(self.project, page)
         macros = [(mid, m.name or mid) for mid, m in self.project.macros.items()]
-        self.state_tree.set_catalog(macros, sorted(page.click_map.keys()))
+        self.state_tree.set_catalog(macros, sorted(page.feature_map.keys()))
         self.state_tree.set_page_context(self.project, page_id)
         self.state_tree.bind(page.state_tree, select_id=select_node_id or None)
         self._set_title_for_ctx()
         self.stack.setCurrentIndex(2)
 
     def _project_click_catalog(self) -> tuple[list[str], list[PageAsset]]:
-        """Union of click image names/assets across all pages (for macro steps)."""
+        """Union of feature image names/assets across all pages (for macro steps)."""
         assert self.project
         names: list[str] = []
         assets: list[PageAsset] = []
         seen: set[str] = set()
         for page_id, page in self.project.pages.items():
             sync_page_asset_maps(self.project, page)
-            for a in list_page_assets(self.project, page_id, "click"):
+            for a in list_page_assets(self.project, page_id):
                 if a.name in seen:
                     continue
                 seen.add(a.name)
                 names.append(a.name)
                 assets.append(a)
-            for name in page.click_map:
+            for name in page.feature_map:
                 if name not in seen:
                     seen.add(name)
                     names.append(name)
@@ -886,7 +908,7 @@ def make_page(page_id: str, name: str | None = None) -> PageDef:
     return PageDef(
         page_id=page_id,
         name=(name or page_id).strip() or page_id,
-        detect_relpath=f"pages/{page_id}/detect/main.png",
+        detect_relpath=f"pages/{page_id}/features/main.png",
         state_tree=[
             StateNode(
                 id=DEFAULT_STATE,

@@ -24,7 +24,7 @@ RUNNER = ROOT / "run_runner.py"
 def _minimal_project(root: Path) -> None:
     page = PageDef(
         page_id="p",
-        detect_relpath="pages/p/detect/main.png",
+        detect_relpath="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="else",
@@ -34,7 +34,7 @@ def _minimal_project(root: Path) -> None:
             )
         ],
     )
-    det = root / "pages" / "p" / "detect"
+    det = root / "pages" / "p" / "features"
     det.mkdir(parents=True)
     cv2.imwrite(str(det / "main.png"), np.zeros((8, 8, 3), dtype=np.uint8))
     proj = Project(
@@ -42,8 +42,7 @@ def _minimal_project(root: Path) -> None:
         root=root,
         runtime=RuntimeConfig(poll_interval=0.2),
         pages={"p": page},
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     save_project(proj)
 

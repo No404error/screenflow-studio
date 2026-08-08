@@ -30,7 +30,7 @@ def _write(path: Path) -> None:
 
 
 def test_detect_page_commit_sticky_false(tmp_path: Path):
-    rel = "pages/a/detect/main.png"
+    rel = "pages/a/features/main.png"
     _write(tmp_path / rel)
     project = Project(
         name="t",
@@ -41,8 +41,7 @@ def test_detect_page_commit_sticky_false(tmp_path: Path):
         pages={
             "a": PageDef(page_id="a", detect_relpath=rel, state_tree=[]),
         },
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     rebuild_resource_index(project)
     m = ScreenMatcher(project)
@@ -57,7 +56,7 @@ def test_detect_page_commit_sticky_false(tmp_path: Path):
 
 
 def test_loop_exception_auto_pauses(tmp_path: Path):
-    rel = "pages/a/detect/main.png"
+    rel = "pages/a/features/main.png"
     _write(tmp_path / rel)
     project = Project(
         name="t",
@@ -75,8 +74,7 @@ def test_loop_exception_auto_pauses(tmp_path: Path):
                 state_tree=[StateNode(id="e", is_else=True, actions=[])],
             ),
         },
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     rebuild_resource_index(project)
     statuses: list[dict] = []
@@ -94,7 +92,7 @@ def test_loop_exception_auto_pauses(tmp_path: Path):
 
 
 def test_dispatch_broken_macro_does_not_arm_post(tmp_path: Path):
-    rel = "pages/a/detect/main.png"
+    rel = "pages/a/features/main.png"
     _write(tmp_path / rel)
     post = PostListen(
         mode="once",
@@ -120,8 +118,7 @@ def test_dispatch_broken_macro_does_not_arm_post(tmp_path: Path):
                 ],
             ),
         },
-        detect_files={},
-        click_files={},
+        feature_files={},
         macros={},
     )
     rebuild_resource_index(project)

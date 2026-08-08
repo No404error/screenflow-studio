@@ -154,12 +154,43 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ed_state_detect_asset": "Recognition image",
         "ed_macro_id": "Internal ID",
         "ed_macro_name": "Macro name",
-        "asset_panel_title": "Pictures on this page",
-        "asset_panel_hint": "Each page has its own recognition and click pictures. Upload here; storage paths are managed for you.",
-        "asset_detect": "Recognition pictures",
-        "asset_click": "Click pictures",
+        "asset_panel_title": "Feature pictures",
+        "asset_panel_hint": (
+            "Feature pictures identify this page, score cases, and locate click targets. "
+            "Two ways to add: (1) ROI — upload a full-page screenshot, then drag a box; "
+            "(2) already-cropped patch — upload a cut-out from the page and skip ROI (whole-screen search)."
+        ),
+        "asset_features": "Feature pictures",
+        "asset_detail_title": "Selected picture",
+        "asset_detail_empty": "Select a picture",
+        "asset_detail_missing": "Image file missing",
+        "asset_detail_name": "Name",
+        "asset_detail_mode": "Search mode",
+        "asset_detail_roi": "ROI",
+        "asset_detail_main": "Page recognition image",
+        "asset_search_roi": "ROI region",
+        "asset_search_full": "Full screen (cropped patch)",
+        "asset_roi_none": "—",
+        "asset_roi_coords": "y {y0}–{y1}, x {x0}–{x1}",
+        "asset_roi_tip": "Match only inside the stored search region.",
+        "asset_full_tip": "No ROI — search the full screen.",
+        "asset_yes": "Yes",
+        "asset_no": "No",
         "asset_upload": "Upload…",
         "asset_delete": "Delete",
+        "roi_crop_title": "Select search region (full screen)",
+        "roi_crop_hint": (
+            "For ROI: upload a full-page / full-window screenshot, then drag a rectangle around the feature. "
+            "The selection is cropped as the template and only that region is searched at run time.\n"
+            "If you already cropped the feature on the page yourself, choose "
+            "“Use already-cropped patch (no ROI)” — that file is stored as-is and matching searches the whole screen.\n"
+            "Esc cancels. Image is shown at 1:1; scroll if needed."
+        ),
+        "roi_crop_clear": "Clear selection",
+        "roi_crop_use_selection": "Crop selection (ROI)",
+        "roi_crop_use_full": "Use already-cropped patch (no ROI)",
+        "roi_crop_need_selection": "Drag a rectangle on the image first.",
+        "roi_crop_failed": "Could not crop the selected region.",
         "asset_pick": "Choose an image…",
         "asset_pick_detect": "Recognition image:",
         "asset_name_title": "Image name",
@@ -255,7 +286,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_else_hint": "Used when nothing else matches (always stays at the bottom)",
         "st_else_tag": " · Other",
         "st_score_kind": "Recognition method",
-        "st_score_source": "Image source",
         "st_score_key": "Image name",
         "st_roi": "Search region (optional)",
         "st_constant": "Fixed similarity value",
@@ -314,8 +344,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_kind_template": "Match an image",
         "st_kind_constant": "Fixed similarity (advanced)",
         "st_kind_invert": "Match when image is absent",
-        "st_src_detect": "Recognition images",
-        "st_src_click": "Click images",
         "st_mode_once": "Observe once",
         "st_mode_until_page": "Until another page",
         "st_mode_until_case": "Until Other case (ELSE)",
@@ -367,19 +395,22 @@ _STRINGS: dict[str, dict[str, str]] = {
             "• Edit page default follow-up — default follow-up used when a case has none of its own."
         ),
         "help_page_images": (
-            "Images that belong only to this page.\n"
-            "• Recognition pictures — identify this screen and score cases that match an image.\n"
-            "• Click pictures — locate where to click in action steps.\n"
-            "• Upload / Delete — add or remove files; storage is handled automatically.\n"
-            "After uploading, select them in cases and click steps."
+            "Feature pictures that belong only to this page — used to identify the screen, "
+            "score cases, and locate click targets in action steps.\n"
+            "• Upload with ROI — choose a full-page screenshot, then drag a box; the selection is cropped "
+            "and matching is limited to that region.\n"
+            "• Upload already-cropped patch — a feature cut from the page; skip ROI so matching searches "
+            "the whole screen (legacy-style).\n"
+            "• Delete — remove files; storage is handled automatically.\n"
+            "After uploading, select one as the page recognition image and use them in cases / click steps."
         ),
         "help_case_basic": (
             "One case on this page: when it wins, its actions run.\n"
             "• Name — label shown in the list and tree.\n"
             "• Other case — used when no other case matches; always stays at the bottom.\n"
             "• Recognition method — Match an image (compare a picture), Fixed similarity (advanced; use a constant score), or Match when image is absent.\n"
-            "• Image source / Image name — which library (recognition vs click) and which picture to use.\n"
-            "• Search region (optional) — left,right,top,bottom as 0–1 of the window (e.g. 0.75,1,0.75,1 = bottom-right); leave empty to search the whole window.\n"
+            "• Image name — which feature picture to use.\n"
+            "• Search region (optional) — overrides the ROI set when the image was uploaded; leave empty to use the image’s ROI, or full-screen search if none.\n"
             "• Fixed similarity value — only for Fixed similarity method.\n"
             "• Actions — ordered steps when this case is selected."
         ),
@@ -577,12 +608,41 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ed_state_detect_asset": "识别图",
         "ed_macro_id": "内部 ID",
         "ed_macro_name": "宏名称",
-        "asset_panel_title": "本页图片",
-        "asset_panel_hint": "每个页面有自己的识别图和点击图。在此上传即可，存放位置由程序管理。",
-        "asset_detect": "识别图",
-        "asset_click": "点击图",
+        "asset_panel_title": "特征图",
+        "asset_panel_hint": (
+            "特征图用于识别本页、给情况打分，以及定位点击目标。"
+            "两种上传方式：（1）ROI — 上传整页/整窗截图后框选区域；"
+            "（2）已裁切小图 — 上传在页面上截好的特征图块，并跳过 ROI（运行时全屏搜索）。"
+        ),
+        "asset_features": "特征图",
+        "asset_detail_title": "当前选中",
+        "asset_detail_empty": "请选择一张特征图",
+        "asset_detail_missing": "图片文件缺失",
+        "asset_detail_name": "名称",
+        "asset_detail_mode": "搜索方式",
+        "asset_detail_roi": "ROI",
+        "asset_detail_main": "本页主识别图",
+        "asset_search_roi": "ROI 区域搜索",
+        "asset_search_full": "全屏（已裁切小图）",
+        "asset_roi_none": "—",
+        "asset_roi_coords": "y {y0}–{y1}，x {x0}–{x1}",
+        "asset_roi_tip": "运行时只在保存的搜索区域内匹配。",
+        "asset_full_tip": "无 ROI — 运行时全屏搜索。",
+        "asset_yes": "是",
+        "asset_no": "否",
         "asset_upload": "上传…",
         "asset_delete": "删除",
+        "roi_crop_title": "选择搜索区域（全屏）",
+        "roi_crop_hint": (
+            "使用 ROI：请上传整页/整窗截图，再拖拽矩形框住特征；选区会裁成模板，运行时只在该区域搜索。\n"
+            "若你已经在页面上截好了特征小图，请选「使用已裁切小图（无 ROI）」——按原图保存，运行时全屏搜索。\n"
+            "Esc 取消。图片按 1:1 显示，超出可滚动。"
+        ),
+        "roi_crop_clear": "清除选区",
+        "roi_crop_use_selection": "裁切选区（ROI）",
+        "roi_crop_use_full": "使用已裁切小图（无 ROI）",
+        "roi_crop_need_selection": "请先在图上拖拽一个矩形选区。",
+        "roi_crop_failed": "无法裁切所选区域。",
         "asset_pick": "选择图片…",
         "asset_pick_detect": "识别图：",
         "asset_name_title": "图片名称",
@@ -678,7 +738,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_else_hint": "其它都未命中时走这里（始终排在最下方）",
         "st_else_tag": " · 其它",
         "st_score_kind": "识别方式",
-        "st_score_source": "图片来源",
         "st_score_key": "图片名称",
         "st_roi": "限定搜索区域（可选）",
         "st_constant": "固定相似度",
@@ -737,8 +796,6 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_kind_template": "匹配图片",
         "st_kind_constant": "固定相似度（高级）",
         "st_kind_invert": "图片未出现时匹配",
-        "st_src_detect": "识别图",
-        "st_src_click": "点击图",
         "st_mode_once": "只观察一次",
         "st_mode_until_page": "直到命中其他页面",
         "st_mode_until_case": "直到命中其它情况（ELSE）",
@@ -790,19 +847,19 @@ _STRINGS: dict[str, dict[str, str]] = {
             "• 编辑本页默认后续观察 — 情况未单独配置后续观察时使用的默认项。"
         ),
         "help_page_images": (
-            "只属于本页的图片。\n"
-            "• 识别图 — 用于判断当前是否为本界面，以及情况中的「匹配图片」。\n"
-            "• 点击图 — 用于动作步骤中定位点击位置。\n"
-            "• 上传 / 删除 — 增删文件；存放位置由程序管理。\n"
-            "上传后，在情况和点击步骤中选用。"
+            "只属于本页的特征图 — 用于识别界面、给情况打分，以及动作步骤中定位点击。\n"
+            "• ROI 上传 — 选整页/整窗截图并框选区域；选区裁成模板，运行时只在该区域搜索。\n"
+            "• 已裁切小图 — 上传在页面上截好的特征图；跳过 ROI，运行时全屏搜索（旧用法）。\n"
+            "• 删除 — 移除文件；存放位置由程序管理。\n"
+            "上传后，可设为本页主识别图，并在情况和点击步骤中选用。"
         ),
         "help_case_basic": (
             "本页上的一种情况：命中后执行其动作。\n"
             "• 名称 — 列表与导航树中显示的名称。\n"
             "• 其它情况 — 其它情况都未命中时使用；始终排在最下方。\n"
             "• 识别方式 — 匹配图片（用图片比对）、固定相似度（高级；使用恒定分数）、或图片未出现时匹配。\n"
-            "• 图片来源 / 图片名称 — 使用识别图还是点击图，以及具体图片。\n"
-            "• 限定搜索区域（可选） — 左,右,上,下，用 0～1 表示相对窗口（如 0.75,1,0.75,1 为右下角）；留空则搜索整窗。\n"
+            "• 图片名称 — 使用哪张特征图。\n"
+            "• 限定搜索区域（可选） — 覆盖上传时为图片设置的 ROI；留空则用图片自带 ROI，都没有则全屏搜索。\n"
             "• 固定相似度 — 仅在识别方式为「固定相似度」时使用。\n"
             "• 动作 — 选中本情况后按顺序执行的步骤。"
         ),

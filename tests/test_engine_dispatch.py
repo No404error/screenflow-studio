@@ -22,7 +22,7 @@ from screenflow.project import rebuild_resource_index
 
 @pytest.fixture()
 def project_root(tmp_path: Path):
-    det = tmp_path / "pages" / "p" / "detect"
+    det = tmp_path / "pages" / "p" / "features"
     det.mkdir(parents=True)
     # minimal valid PNG via numpy+cv2 if available, else raw bytes may fail load —
     # put a real tiny PNG
@@ -38,8 +38,7 @@ def _project(root: Path, pages: dict[str, PageDef]) -> Project:
         root=root,
         runtime=RuntimeConfig(match_threshold=0.5, action_delay=0, action_cooldown=0),
         pages=pages,
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     rebuild_resource_index(p)
     return p
@@ -47,8 +46,8 @@ def _project(root: Path, pages: dict[str, PageDef]) -> Project:
 
 def _engine(project: Project) -> FlowEngine:
     eng = FlowEngine(project, log=lambda _m: None)
-    eng.matcher.match_detect = MagicMock(return_value=(0.99, (1, 1)))
-    eng.matcher.match_click = MagicMock(return_value=(0.99, (1, 1)))
+    eng.matcher.match_feature = MagicMock(return_value=(0.99, (1, 1)))
+    eng.matcher.match_detect = eng.matcher.match_feature
     eng.matcher.capture_screen = MagicMock(
         return_value=np.zeros((8, 8, 3), dtype=np.uint8)
     )
@@ -75,7 +74,7 @@ def test_dispatch_arms_until_case_then_else_ends(project_root):
     page = PageDef(
         page_id="p",
         name="Page",
-        detect_relpath="pages/p/detect/main.png",
+        detect_relpath="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -121,7 +120,7 @@ def test_dispatch_once_clears_sticky_same_frame(project_root):
     page = PageDef(
         page_id="p",
         name="Page",
-        detect_relpath="pages/p/detect/main.png",
+        detect_relpath="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -157,7 +156,7 @@ def test_dispatch_page_change_ends_sticky(project_root):
     page = PageDef(
         page_id="p",
         name="Page",
-        detect_relpath="pages/p/detect/main.png",
+        detect_relpath="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -192,7 +191,7 @@ def test_post_uses_full_detect(project_root):
     import cv2
 
     for pid, seed in (("p", 1), ("q", 2), ("r", 3)):
-        d = project_root / "pages" / pid / "detect"
+        d = project_root / "pages" / pid / "features"
         d.mkdir(parents=True, exist_ok=True)
         rng = np.random.RandomState(seed)
         cv2.imwrite(
@@ -203,7 +202,7 @@ def test_post_uses_full_detect(project_root):
         "p": PageDef(
             page_id="p",
             name="P",
-            detect_relpath="pages/p/detect/main.png",
+            detect_relpath="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="main",
@@ -223,13 +222,13 @@ def test_post_uses_full_detect(project_root):
         "q": PageDef(
             page_id="q",
             name="Q",
-            detect_relpath="pages/q/detect/main.png",
+            detect_relpath="pages/q/features/main.png",
             state_tree=[],
         ),
         "r": PageDef(
             page_id="r",
             name="R",
-            detect_relpath="pages/r/detect/main.png",
+            detect_relpath="pages/r/features/main.png",
             state_tree=[],
         ),
     }
@@ -244,13 +243,12 @@ def test_post_uses_full_detect(project_root):
             ref_height=32,
         ),
         pages=pages,
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     rebuild_resource_index(project)
     eng = FlowEngine(project, log=lambda _m: None)
     eng.actions.run_steps = MagicMock(return_value=True)
-    screen = cv2.imread(str(project_root / "pages/p/detect/main.png"))
+    screen = cv2.imread(str(project_root / "pages/p/features/main.png"))
     assert screen is not None
     eng.matcher.capture_screen = MagicMock(return_value=screen)
 
@@ -278,7 +276,7 @@ def test_dispatch_does_not_arm_post_when_actions_fail(project_root):
     page = PageDef(
         page_id="p",
         name="Page",
-        detect_relpath="pages/p/detect/main.png",
+        detect_relpath="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -303,7 +301,7 @@ def test_status_payload_marks_sticky_followup(project_root):
     page = PageDef(
         page_id="p",
         name="Page",
-        detect_relpath="pages/p/detect/main.png",
+        detect_relpath="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -338,7 +336,7 @@ def test_dispatch_arms_until_page_empty_tree(project_root):
     page = PageDef(
         page_id="p",
         name="Page",
-        detect_relpath="pages/p/detect/main.png",
+        detect_relpath="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -363,7 +361,7 @@ def test_default_post_fallback(project_root):
     page = PageDef(
         page_id="p",
         name="Page",
-        detect_relpath="pages/p/detect/main.png",
+        detect_relpath="pages/p/features/main.png",
         state_tree=[
             StateNode(id="main", name="Main", is_else=True, actions=[]),
         ],

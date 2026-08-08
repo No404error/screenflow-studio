@@ -22,8 +22,7 @@ def _proj(root: Path, pages: dict[str, PageDef], macros=None) -> Project:
         root=root,
         runtime=RuntimeConfig(),
         pages=pages,
-        detect_files={},
-        click_files={},
+        feature_files={},
         macros=macros or {},
     )
 
@@ -33,14 +32,14 @@ def test_scoreless_non_else_is_error():
         root = Path(d)
         page = PageDef(
             page_id="p",
-            detect_relpath="pages/p/detect/main.png",
+            detect_relpath="pages/p/features/main.png",
             state_tree=[
                 StateNode(id="a", name="A", score=ScoreSpec(key="main")),
                 StateNode(id="b", name="B"),  # no score, not else
             ],
         )
-        (root / "pages" / "p" / "detect").mkdir(parents=True)
-        (root / "pages" / "p" / "detect" / "main.png").write_bytes(b"x")
+        (root / "pages" / "p" / "features").mkdir(parents=True)
+        (root / "pages" / "p" / "features" / "main.png").write_bytes(b"x")
         issues = validate_project_structure(_proj(root, {"p": page}), I18n().t)
         assert any(i.level == "error" and "B" in i.text for i in issues)
 
@@ -50,7 +49,7 @@ def test_frames_mode_requires_count():
         root = Path(d)
         page = PageDef(
             page_id="p",
-            detect_relpath="pages/p/detect/main.png",
+            detect_relpath="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="a",
@@ -79,11 +78,11 @@ def test_frames_mode_requires_count():
 def test_missing_macro_and_script_warn():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        (root / "pages" / "p" / "detect").mkdir(parents=True)
-        (root / "pages" / "p" / "detect" / "main.png").write_bytes(b"x")
+        (root / "pages" / "p" / "features").mkdir(parents=True)
+        (root / "pages" / "p" / "features" / "main.png").write_bytes(b"x")
         page = PageDef(
             page_id="p",
-            detect_relpath="pages/p/detect/main.png",
+            detect_relpath="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="a",
@@ -105,14 +104,13 @@ def test_missing_macro_and_script_warn():
 def test_macro_click_missing_is_warning_not_error():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        (root / "pages" / "p" / "detect").mkdir(parents=True)
-        (root / "pages" / "p" / "click").mkdir(parents=True)
-        (root / "pages" / "p" / "detect" / "main.png").write_bytes(b"x")
-        (root / "pages" / "p" / "click" / "ok.png").write_bytes(b"x")
+        (root / "pages" / "p" / "features").mkdir(parents=True)
+        (root / "pages" / "p" / "features" / "main.png").write_bytes(b"x")
+        (root / "pages" / "p" / "features" / "ok.png").write_bytes(b"x")
         page = PageDef(
             page_id="p",
-            detect_relpath="pages/p/detect/main.png",
-            click_map={"ok": "pages/p/click/ok.png"},
+            detect_relpath="pages/p/features/main.png",
+            feature_map={"ok": "pages/p/features/ok.png", "main": "pages/p/features/main.png"},
             state_tree=[StateNode(id="DEFAULT", is_else=True, actions=[])],
         )
         macros = {
@@ -172,17 +170,17 @@ def test_unknown_post_mode_is_error():
 def test_score_key_must_exist_in_page_library():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        detect = root / "pages" / "p" / "detect"
-        detect.mkdir(parents=True)
-        (detect / "main.png").write_bytes(b"x")
+        feat = root / "pages" / "p" / "features"
+        feat.mkdir(parents=True)
+        (feat / "main.png").write_bytes(b"x")
         page = PageDef(
             page_id="p",
-            detect_relpath="pages/p/detect/main.png",
+            detect_relpath="pages/p/features/main.png",
             state_tree=[
                 StateNode(
                     id="a",
                     name="A",
-                    score=ScoreSpec(key="missing_img", source="detect"),
+                    score=ScoreSpec(key="missing_img"),
                     actions=[ActionStep("wait", 0.1)],
                 ),
                 StateNode(id="DEFAULT", is_else=True, actions=[]),

@@ -16,6 +16,7 @@ from screenflow.models import (
     StateNode,
 )
 from screenflow.project import merge_decide_params
+from screenflow.roi import effective_roi, normalize_roi
 
 if TYPE_CHECKING:
     from screenflow.matcher import ScreenMatcher
@@ -49,12 +50,7 @@ def score_node(
     if spec.kind == "constant":
         return float(spec.constant)
     if spec.kind == "invert":
-        base = ScoreSpec(
-            kind="template",
-            key=spec.key,
-            source=spec.source,
-            roi=spec.roi,
-        )
+        base = ScoreSpec(kind="template", key=spec.key, roi=spec.roi)
         conf, found = _template_score(base, screen, matcher, page_id)
         # Missing template must not invert to 1.0 and win forever.
         if not found:
@@ -68,15 +64,13 @@ def _resolve_store_key(
     matcher: "ScreenMatcher",
     page_id: str,
     key: str,
-    source: str,
 ) -> str | None:
     """
     Prefer page-scoped asset key. Bare-name fallback only when that unscoped
     key is indexed (rebuild keeps unscoped keys only when unique project-wide).
     """
-    store = getattr(matcher, "click" if source == "click" else "detect", None)
+    store = getattr(matcher, "features", None)
     if not isinstance(store, dict):
-        # Test doubles without a real store: try scoped then bare.
         return None
     scoped = scoped_asset_key(page_id, key)
     if scoped in store:
@@ -96,23 +90,30 @@ def _template_score(
     key = (spec.key or "").strip()
     if not key:
         return 0.0, False
-    roi = tuple(spec.roi) if spec.roi and len(spec.roi) == 4 else None
-    source = (spec.source or "detect").lower()
-    if source not in ("click", "detect"):
-        source = "detect"
-    match_fn = matcher.match_click if source == "click" else matcher.match_detect
-    store_key = _resolve_store_key(matcher, page_id, key, source)
+    match_fn = getattr(matcher, "match_feature", None)
+    if not callable(match_fn):
+        # Older test doubles may only stub match_detect.
+        match_fn = getattr(matcher, "match_detect", None)
+    if not callable(match_fn):
+        return 0.0, False
+    store_key = _resolve_store_key(matcher, page_id, key)
+    override = normalize_roi(spec.roi)
     if store_key is not None:
+        asset = None
+        store_roi = getattr(matcher, "store_roi", None)
+        if callable(store_roi):
+            asset = store_roi(store_key)
+        roi = effective_roi(override, asset)
         conf, _ = match_fn(screen, store_key, roi=roi)
         return conf, True
-    store = getattr(matcher, "click" if source == "click" else "detect", None)
+    store = getattr(matcher, "features", None)
     if isinstance(store, dict):
         return 0.0, False
-    # Test doubles: scoped then bare (treat as found for non-invert template paths).
+    # Test doubles without a features store: scoped then bare.
     scoped = scoped_asset_key(page_id, key)
-    conf, _ = match_fn(screen, scoped, roi=roi)
+    conf, _ = match_fn(screen, scoped, roi=override)
     if conf <= 0 and key != scoped:
-        conf, _ = match_fn(screen, key, roi=roi)
+        conf, _ = match_fn(screen, key, roi=override)
     return conf, True
 
 

@@ -1028,17 +1028,26 @@ class StudioWindow(QMainWindow):
         self.project.pages[page_id] = make_page(page_id, name=name)
         ensure_page_asset_dirs(self.project, page_id)
         if wiz.image_path:
-            try:
-                asset = upload_page_asset(
-                    self.project,
-                    page_id,
-                    "detect",
-                    wiz.image_path,
-                    preferred_name="main",
-                )
-                self.project.pages[page_id].detect_relpath = asset.relpath
-            except Exception as exc:
-                QMessageBox.warning(self, self.t("err_title"), str(exc))
+            from studio.roi_crop_dialog import prompt_upload_with_roi
+
+            cropped = prompt_upload_with_roi(self, self.t, wiz.image_path)
+            if cropped is not None:
+                use_path, roi = cropped
+                try:
+                    asset = upload_page_asset(
+                        self.project,
+                        page_id,
+                        use_path,
+                        preferred_name="main",
+                        roi=roi,
+                    )
+                    page = self.project.pages[page_id]
+                    page.detect_relpath = asset.relpath
+                    if roi:
+                        page.detect_roi = list(roi)
+                        page.feature_rois[asset.name] = list(roi)
+                except Exception as exc:
+                    QMessageBox.warning(self, self.t("err_title"), str(exc))
         self._mark_dirty()
         self._fill_tree()
         if wiz.edit_actions:

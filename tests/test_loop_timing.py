@@ -23,7 +23,7 @@ from screenflow.models import (
 def project_root(tmp_path: Path):
     import cv2
 
-    det = tmp_path / "pages" / "p" / "detect"
+    det = tmp_path / "pages" / "p" / "features"
     det.mkdir(parents=True)
     cv2.imwrite(str(det / "main.png"), np.zeros((8, 8, 3), dtype=np.uint8))
     return tmp_path
@@ -36,7 +36,7 @@ def _project(root: Path, *, poll: float, verbose: bool = False) -> Project:
         "p": PageDef(
             page_id="p",
             name="Page",
-            detect_relpath="pages/p/detect/main.png",
+            detect_relpath="pages/p/features/main.png",
             state_tree=[],
         )
     }
@@ -51,8 +51,7 @@ def _project(root: Path, *, poll: float, verbose: bool = False) -> Project:
             verbose_log=verbose,
         ),
         pages=pages,
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     rebuild_resource_index(p)
     return p

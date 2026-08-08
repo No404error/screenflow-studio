@@ -114,9 +114,9 @@ def _check_score_assets(
     where: str,
     t,
 ) -> list[Issue]:
-    """Score image keys must exist in the page's chosen library."""
-    detect_names = {a.name for a in list_page_assets(project, page_id, "detect")}
-    click_names = {a.name for a in list_page_assets(project, page_id, "click")}
+    """Score image keys must exist in the page's feature library."""
+    names = {a.name for a in list_page_assets(project, page_id)}
+    lib_label = t("asset_features")
     issues: list[Issue] = []
     for n in iter_tree(nodes):
         if n.is_else or n.score is None:
@@ -124,9 +124,6 @@ def _check_score_assets(
         if (n.score.kind or "template") == "constant":
             continue
         key = (n.score.key or "").strip()
-        src = n.score.source or "detect"
-        lib = detect_names if src == "detect" else click_names
-        lib_label = t("st_src_detect") if src == "detect" else t("st_src_click")
         path = f"{where}/{n.display_name()}"
         if not key:
             issues.append(
@@ -135,7 +132,7 @@ def _check_score_assets(
                     t("val_score_key_empty", where=path, node=n.display_name()),
                 )
             )
-        elif key not in lib:
+        elif key not in names:
             issues.append(
                 Issue(
                     "error",
@@ -323,14 +320,14 @@ def validate_for_start(project: Project, t) -> list[Issue]:
     for page_id, page in project.pages.items():
         sync_page_asset_maps(project, page)
         name = page.display_name()
-        detect_assets = list_page_assets(project, page_id, "detect")
+        detect_assets = list_page_assets(project, page_id)
         detect_ok = bool(detect_assets) or resolve_asset_path(
             project, page.detect_relpath
         ).is_file()
         if not detect_ok:
             issues.append(Issue("error", t("val_no_detect", page=name)))
 
-        click_keys = set(page.click_map.keys())
+        click_keys = set(page.feature_map.keys())
 
         def walk_actions(node: StateNode, path: str) -> None:
             if node.is_leaf():
@@ -383,10 +380,8 @@ def validate_for_start(project: Project, t) -> list[Issue]:
     all_click_keys: set[str] = set()
     for page_id, page in project.pages.items():
         sync_page_asset_maps(project, page)
-        all_click_keys.update(page.click_map.keys())
-        all_click_keys.update(
-            a.name for a in list_page_assets(project, page_id, "click")
-        )
+        all_click_keys.update(page.feature_map.keys())
+        all_click_keys.update(a.name for a in list_page_assets(project, page_id))
 
     for mid, macro in project.macros.items():
         _walk_steps_refs(

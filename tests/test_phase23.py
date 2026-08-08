@@ -20,18 +20,15 @@ from unittest.mock import MagicMock
 def test_invert_score():
     node = StateNode(
         id="i",
-        score=ScoreSpec(kind="invert", key="k", source="detect"),
+        score=ScoreSpec(kind="invert", key="k"),
     )
 
     class M:
         runtime = SimpleNamespace(match_threshold=0.72)
-        detect = {"p/k": object()}
+        features = {"p/k": object()}
 
-        def match_detect(self, screen, key, *, roi=None):
+        def match_feature(self, screen, key, *, roi=None):
             return 0.2, None
-
-        def match_click(self, screen, key, *, roi=None):
-            return 0.0, None
 
     assert abs(score_node(node, np.zeros((4, 4, 3), dtype=np.uint8), M(), "p") - 0.8) < 1e-6
 
@@ -39,17 +36,14 @@ def test_invert_score():
 def test_invert_missing_template_scores_zero():
     node = StateNode(
         id="i",
-        score=ScoreSpec(kind="invert", key="missing", source="detect"),
+        score=ScoreSpec(kind="invert", key="missing"),
     )
 
     class M:
         runtime = SimpleNamespace(match_threshold=0.72)
-        detect = {}
+        features = {}
 
-        def match_detect(self, screen, key, *, roi=None):
-            return 0.0, None
-
-        def match_click(self, screen, key, *, roi=None):
+        def match_feature(self, screen, key, *, roi=None):
             return 0.0, None
 
     assert score_node(node, np.zeros((4, 4, 3), dtype=np.uint8), M(), "p") == 0.0
@@ -68,8 +62,7 @@ def test_when_var_filters():
     ]
     m = SimpleNamespace(
         runtime=SimpleNamespace(match_threshold=0.5),
-        match_detect=lambda *a, **k: (0.0, None),
-        match_click=lambda *a, **k: (0.0, None),
+        match_feature=lambda *a, **k: (0.0, None),
     )
     screen = np.zeros((4, 4, 3), dtype=np.uint8)
     rt = RuntimeConfig()
@@ -98,8 +91,7 @@ def test_frames_post_expires():
         root=MagicMock(),
         runtime=RuntimeConfig(match_threshold=0.5),
         pages={},
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     engine = SimpleNamespace(
         vars={},
@@ -108,7 +100,7 @@ def test_frames_post_expires():
     )
     out = run_post_listen(
         project,
-        MagicMock(runtime=project.runtime, match_detect=MagicMock(return_value=(0, None)), match_click=MagicMock(return_value=(0, None))),
+        MagicMock(runtime=project.runtime, match_feature=MagicMock(return_value=(0, None))),
         engine,
         sticky,
         np.zeros((3, 3, 3), dtype=np.uint8),

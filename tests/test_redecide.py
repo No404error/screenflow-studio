@@ -22,8 +22,7 @@ def test_abort_pack_on_page_change():
         root=Path("."),
         runtime=rt,
         pages={},
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     matcher = MagicMock()
     matcher.capture_screen.return_value = np.zeros((4, 4, 3), dtype=np.uint8)
@@ -50,8 +49,7 @@ def test_no_abort_when_flag_off():
         root=Path("."),
         runtime=rt,
         pages={},
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     matcher = MagicMock()
     matcher.capture_screen.return_value = np.zeros((4, 4, 3), dtype=np.uint8)

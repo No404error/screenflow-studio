@@ -327,7 +327,6 @@ class StepsEditor(QWidget):
                 self._click_assets,
                 selected=selected,
                 allow_empty=True,
-                kind="click",
             )
         else:
             # Fallback: names only (no hover path)

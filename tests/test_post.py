@@ -25,8 +25,7 @@ def _proj(**kwargs):
         root=MagicMock(),
         runtime=kwargs.pop("runtime", RuntimeConfig(match_threshold=0.9)),
         pages={},
-        detect_files={},
-        click_files={},
+        feature_files={},
         **kwargs,
     )
 
@@ -53,8 +52,8 @@ def test_until_case_ends_on_else():
     project = _proj()
     matcher = MagicMock()
     matcher.runtime = project.runtime
+    matcher.match_feature.return_value = (0.0, None)
     matcher.match_detect.return_value = (0.0, None)
-    matcher.match_click.return_value = (0.0, None)
     engine = SimpleNamespace(
         vars={},
         actions=SimpleNamespace(run_steps=MagicMock(return_value=True)),
@@ -85,8 +84,8 @@ def test_until_miss_alias_ends_on_else():
     project = _proj()
     matcher = MagicMock()
     matcher.runtime = project.runtime
+    matcher.match_feature.return_value = (0.0, None)
     matcher.match_detect.return_value = (0.0, None)
-    matcher.match_click.return_value = (0.0, None)
     engine = SimpleNamespace(
         vars={},
         actions=SimpleNamespace(run_steps=MagicMock(return_value=True)),
@@ -120,8 +119,8 @@ def test_until_page_else_skips_actions():
     project = _proj()
     matcher = MagicMock()
     matcher.runtime = project.runtime
+    matcher.match_feature.return_value = (0.0, None)
     matcher.match_detect.return_value = (0.0, None)
-    matcher.match_click.return_value = (0.0, None)
     run_steps = MagicMock(return_value=True)
     engine = SimpleNamespace(vars={}, actions=SimpleNamespace(run_steps=run_steps), project=project)
     out = run_post_listen(
@@ -180,8 +179,7 @@ def test_validate_until_page_allows_empty_tree():
             root=root,
             runtime=RuntimeConfig(),
             pages={"p": page},
-            detect_files={},
-            click_files={},
+            feature_files={},
         )
         issues = validate_project_structure(proj, I18n().t)
         assert not any(
@@ -298,8 +296,7 @@ def test_validate_post_empty_and_until_case():
             root=root,
             runtime=RuntimeConfig(),
             pages={"p": page},
-            detect_files={},
-            click_files={},
+            feature_files={},
         )
         issues = validate_project_structure(proj, I18n().t)
         assert any(i.level == "error" for i in issues)
@@ -310,7 +307,7 @@ def test_engine_settle_before_first_post(tmp_path):
     from screenflow.engine import FlowEngine
     from screenflow.project import rebuild_resource_index
 
-    det = tmp_path / "pages" / "p" / "detect"
+    det = tmp_path / "pages" / "p" / "features"
     det.mkdir(parents=True)
     cv2.imwrite(str(det / "main.png"), np.zeros((8, 8, 3), dtype=np.uint8))
 
@@ -330,7 +327,7 @@ def test_engine_settle_before_first_post(tmp_path):
     page = PageDef(
         page_id="p",
         name="Page",
-        detect_relpath="pages/p/detect/main.png",
+        detect_relpath="pages/p/features/main.png",
         state_tree=[
             StateNode(
                 id="main",
@@ -346,13 +343,12 @@ def test_engine_settle_before_first_post(tmp_path):
         root=tmp_path,
         runtime=RuntimeConfig(match_threshold=0.5, action_delay=0, action_cooldown=0),
         pages={"p": page},
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     rebuild_resource_index(project)
     eng = FlowEngine(project, log=lambda _m: None)
-    eng.matcher.match_detect = MagicMock(return_value=(0.99, (1, 1)))
-    eng.matcher.match_click = MagicMock(return_value=(0.99, (1, 1)))
+    eng.matcher.match_feature = MagicMock(return_value=(0.99, (1, 1)))
+    eng.matcher.match_detect = eng.matcher.match_feature
     eng.matcher.capture_screen = MagicMock(
         return_value=np.zeros((8, 8, 3), dtype=np.uint8)
     )
@@ -396,8 +392,8 @@ def test_until_case_else_runs_actions_and_ends():
     project = _proj()
     matcher = MagicMock()
     matcher.runtime = project.runtime
+    matcher.match_feature.return_value = (0.0, None)
     matcher.match_detect.return_value = (0.0, None)
-    matcher.match_click.return_value = (0.0, None)
     run_steps = MagicMock(return_value=True)
     engine = SimpleNamespace(
         vars={}, actions=SimpleNamespace(run_steps=run_steps), project=project
@@ -492,8 +488,8 @@ def test_until_case_ends_on_nested_leaf_else():
     project = _proj(runtime=RuntimeConfig(match_threshold=0.5))
     matcher = MagicMock()
     matcher.runtime = project.runtime
+    matcher.match_feature.return_value = (0.0, None)
     matcher.match_detect.return_value = (0.0, None)
-    matcher.match_click.return_value = (0.0, None)
     run_steps = MagicMock(return_value=True)
     engine = SimpleNamespace(
         vars={}, actions=SimpleNamespace(run_steps=run_steps), project=project

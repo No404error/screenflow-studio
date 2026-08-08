@@ -40,10 +40,9 @@ class MacroDef:
 class ScoreSpec:
     """How a state-tree candidate gets its confidence on the current frame."""
 
-    # template | constant
+    # template | constant | invert
     kind: str = "template"
     key: str | None = None
-    source: str = "detect"  # detect | click
     roi: list[float] | None = None
     constant: float = 0.0
 
@@ -130,8 +129,11 @@ class PageDef:
     name: str = ""
     # Root of state tree (siblings = first layer)
     state_tree: list[StateNode] = field(default_factory=list)
-    detect_extras: dict[str, str] = field(default_factory=dict)
-    click_map: dict[str, str] = field(default_factory=dict)
+    # Logical name → relpath under pages/{id}/features/
+    feature_map: dict[str, str] = field(default_factory=dict)
+    # Optional search ROIs [y0, y1, x0, x1] as 0–1 of screen (None / missing = full frame).
+    detect_roi: list[float] | None = None  # main page detect image
+    feature_rois: dict[str, list[float]] = field(default_factory=dict)
     pair_with: str | None = None
     detect_priority: int = 0
     decide_params: DecideParams = field(default_factory=DecideParams)
@@ -170,8 +172,7 @@ class Project:
     root: Path
     runtime: RuntimeConfig
     pages: dict[str, PageDef]
-    detect_files: dict[str, str]
-    click_files: dict[str, str]
+    feature_files: dict[str, str] = field(default_factory=dict)
     macros: dict[str, MacroDef] = field(default_factory=dict)
     page_pairs: list[tuple[str, str]] = field(default_factory=list)
     detect_priority: dict[str, int] = field(default_factory=dict)

@@ -5,17 +5,19 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from screenflow.models import PageDef, Project
+from screenflow.roi import normalize_roi
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
+FEATURES_DIR = "features"
 
 
 @dataclass
 class PageAsset:
-    """One image under a page's detect/ or click/ folder."""
+    """One image under a page's features/ folder."""
 
     name: str  # stem / logical key
-    kind: str  # detect | click
-    relpath: str  # relative to project root, e.g. pages/{id}/detect/main.png
+    relpath: str  # relative to project root, e.g. pages/{id}/features/main.png
+    roi: list[float] | None = None  # optional [y0, y1, x0, x1]
 
 
 def resolve_asset_path(project: Project, relpath: str | Path) -> Path:
@@ -34,23 +36,16 @@ def page_json_path(project: Project, page_id: str) -> Path:
     return page_dir(project, page_id) / "page.json"
 
 
-def page_templates_root(project: Project, page_id: str) -> Path:
-    return page_dir(project, page_id)
+def page_asset_dir(project: Project, page_id: str) -> Path:
+    return page_dir(project, page_id) / FEATURES_DIR
 
 
-def page_asset_dir(project: Project, page_id: str, kind: str) -> Path:
-    if kind not in ("detect", "click"):
-        raise ValueError(f"kind must be detect|click, got {kind!r}")
-    return page_templates_root(project, page_id) / kind
-
-
-def page_asset_relpath(page_id: str, kind: str, filename: str) -> str:
-    return f"pages/{page_id}/{kind}/{filename}"
+def page_asset_relpath(page_id: str, filename: str) -> str:
+    return f"pages/{page_id}/{FEATURES_DIR}/{filename}"
 
 
 def ensure_page_asset_dirs(project: Project, page_id: str) -> None:
-    for kind in ("detect", "click"):
-        page_asset_dir(project, page_id, kind).mkdir(parents=True, exist_ok=True)
+    page_asset_dir(project, page_id).mkdir(parents=True, exist_ok=True)
 
 
 def _safe_stem(name: str) -> str:
@@ -58,20 +53,25 @@ def _safe_stem(name: str) -> str:
     return safe.strip("_") or "asset"
 
 
-def list_page_assets(project: Project, page_id: str, kind: str) -> list[PageAsset]:
-    """List image assets on disk for a page (detect or click)."""
-    folder = page_asset_dir(project, page_id, kind)
+def list_page_assets(project: Project, page_id: str) -> list[PageAsset]:
+    """List feature images on disk for a page."""
+    folder = page_asset_dir(project, page_id)
     if not folder.is_dir():
         return []
+    page = project.pages.get(page_id)
+    rois = page.feature_rois if page is not None else {}
     out: list[PageAsset] = []
     for path in sorted(folder.iterdir()):
         if not path.is_file() or path.suffix.lower() not in IMAGE_SUFFIXES:
             continue
+        stem = path.stem
+        roi_raw = rois.get(stem)
+        norm = normalize_roi(roi_raw)
         out.append(
             PageAsset(
-                name=path.stem,
-                kind=kind,
-                relpath=page_asset_relpath(page_id, kind, path.name),
+                name=stem,
+                relpath=page_asset_relpath(page_id, path.name),
+                roi=list(norm) if norm else None,
             )
         )
     return out
@@ -80,14 +80,14 @@ def list_page_assets(project: Project, page_id: str, kind: str) -> list[PageAsse
 def upload_page_asset(
     project: Project,
     page_id: str,
-    kind: str,
     src: str | Path,
     *,
     preferred_name: str | None = None,
+    roi: list[float] | None = None,
 ) -> PageAsset:
     """
-    Copy an image into the page's detect/ or click/ folder.
-    Returns the asset descriptor (logical name + relative path).
+    Copy an image into the page's features/ folder.
+    Optional roi [y0,y1,x0,x1] is stored on the page maps (None = full-frame search).
     """
     src_path = Path(src)
     if not src_path.exists():
@@ -97,22 +97,39 @@ def upload_page_asset(
     ext = src_path.suffix.lower() or ".png"
     if ext not in IMAGE_SUFFIXES:
         ext = ".png"
-    dest_dir = page_asset_dir(project, page_id, kind)
+    dest_dir = page_asset_dir(project, page_id)
     dest = dest_dir / f"{stem}{ext}"
     n = 2
     while dest.exists():
         dest = dest_dir / f"{stem}_{n}{ext}"
         n += 1
     shutil.copy2(src_path, dest)
-    return PageAsset(
+    asset = PageAsset(
         name=dest.stem,
-        kind=kind,
-        relpath=page_asset_relpath(page_id, kind, dest.name),
+        relpath=page_asset_relpath(page_id, dest.name),
+        roi=None,
     )
+    page = project.pages.get(page_id)
+    if page is not None:
+        set_asset_roi(page, asset.name, roi)
+        asset.roi = list(normalize_roi(roi)) if normalize_roi(roi) else None
+    return asset
 
 
-def delete_page_asset(project: Project, page_id: str, kind: str, name: str) -> bool:
-    folder = page_asset_dir(project, page_id, kind)
+def set_asset_roi(page: PageDef, name: str, roi: list[float] | None) -> None:
+    """Attach or clear search ROI for a logical asset name on the page."""
+    norm = normalize_roi(roi)
+    name = name.strip()
+    if norm is None:
+        page.feature_rois.pop(name, None)
+    else:
+        page.feature_rois[name] = list(norm)
+    if Path(page.detect_relpath).stem == name:
+        page.detect_roi = list(norm) if norm else None
+
+
+def delete_page_asset(project: Project, page_id: str, name: str) -> bool:
+    folder = page_asset_dir(project, page_id)
     if not folder.is_dir():
         return False
     removed = False
@@ -120,42 +137,50 @@ def delete_page_asset(project: Project, page_id: str, kind: str, name: str) -> b
         if path.is_file() and path.stem == name:
             path.unlink(missing_ok=True)
             removed = True
+    page = project.pages.get(page_id)
+    if page is not None and removed:
+        set_asset_roi(page, name, None)
+        page.feature_map.pop(name, None)
     return removed
 
 
 def sync_page_asset_maps(project: Project, page: PageDef) -> None:
     """
-    Rebuild click_map / detect_extras from the page asset folders.
+    Rebuild feature_map from the page features/ folder.
     Keeps map entries whose files still exist elsewhere under the project root.
+    Prunes ROI entries for names that no longer exist.
     """
     page_id = page.page_id
     ensure_page_asset_dirs(project, page_id)
 
-    detect_assets = {a.name: a.relpath for a in list_page_assets(project, page_id, "detect")}
-    click_assets = {a.name: a.relpath for a in list_page_assets(project, page_id, "click")}
+    disk = {a.name: a.relpath for a in list_page_assets(project, page_id)}
 
-    legacy_detect = {
+    legacy = {
         k: v
-        for k, v in page.detect_extras.items()
-        if k not in detect_assets and resolve_asset_path(project, v).is_file()
-    }
-    legacy_click = {
-        k: v
-        for k, v in page.click_map.items()
-        if k not in click_assets and resolve_asset_path(project, v).is_file()
+        for k, v in page.feature_map.items()
+        if k not in disk and resolve_asset_path(project, v).is_file()
     }
 
-    page.detect_extras = {**legacy_detect, **detect_assets}
-    page.click_map = {**legacy_click, **click_assets}
+    page.feature_map = {**legacy, **disk}
+
+    page.feature_rois = {
+        k: list(v)
+        for k, v in page.feature_rois.items()
+        if k in page.feature_map and normalize_roi(v)
+    }
 
     detect_path = resolve_asset_path(project, page.detect_relpath)
     if not detect_path.is_file():
-        if detect_assets:
-            page.detect_relpath = detect_assets.get(
-                "main", next(iter(detect_assets.values()))
-            )
+        if disk:
+            page.detect_relpath = disk.get("main", next(iter(disk.values())))
         else:
-            page.detect_relpath = page_asset_relpath(page_id, "detect", "main.png")
+            page.detect_relpath = page_asset_relpath(page_id, "main.png")
+
+    stem = Path(page.detect_relpath).stem
+    if stem in page.feature_rois:
+        page.detect_roi = list(page.feature_rois[stem])
+    elif page.detect_roi is not None and not normalize_roi(page.detect_roi):
+        page.detect_roi = None
 
 
 def asset_name_from_relpath(relpath: str) -> str:

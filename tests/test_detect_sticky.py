@@ -26,7 +26,7 @@ def _write_pattern(path: Path, seed: int, size: int = 48) -> None:
 def _project(root: Path, page_ids: list[str]) -> Project:
     pages: dict[str, PageDef] = {}
     for i, pid in enumerate(page_ids):
-        rel = f"pages/{pid}/detect/main.png"
+        rel = f"pages/{pid}/features/main.png"
         _write_pattern(root / rel, seed=100 + i)
         pages[pid] = PageDef(
             page_id=pid,
@@ -45,15 +45,14 @@ def _project(root: Path, page_ids: list[str]) -> Project:
             ref_height=48,
         ),
         pages=pages,
-        detect_files={},
-        click_files={},
+        feature_files={},
     )
     rebuild_resource_index(p)
     return p
 
 
 def _screen(root: Path, pid: str) -> np.ndarray:
-    img = cv2.imread(str(root / f"pages/{pid}/detect/main.png"))
+    img = cv2.imread(str(root / f"pages/{pid}/features/main.png"))
     assert img is not None
     return img
 

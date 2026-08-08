@@ -24,7 +24,7 @@ RUNNER = ROOT / "run_runner.py"
 def test_set_runtime_acks_in_log():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        det = root / "pages" / "p" / "detect"
+        det = root / "pages" / "p" / "features"
         det.mkdir(parents=True)
         cv2.imwrite(str(det / "main.png"), np.zeros((8, 8, 3), dtype=np.uint8))
         save_project(
@@ -35,12 +35,11 @@ def test_set_runtime_acks_in_log():
                 pages={
                     "p": PageDef(
                         page_id="p",
-                        detect_relpath="pages/p/detect/main.png",
+                        detect_relpath="pages/p/features/main.png",
                         state_tree=[StateNode(id="e", name="O", is_else=True)],
                     )
                 },
-                detect_files={},
-                click_files={},
+                feature_files={},
             )
         )
         listener, port = serve_once()

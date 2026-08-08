@@ -1,4 +1,4 @@
-"""Dropdown of page assets with hover image preview."""
+"""Dropdown of page feature assets with hover image preview."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from studio.hover_preview import HoverImagePreview
 
 
 class AssetNameCombo(QComboBox):
-    """Non-editable list of asset names for one page library (detect|click)."""
+    """Non-editable list of feature asset names for one page."""
 
     selection_changed = Signal()
 
@@ -22,7 +22,6 @@ class AssetNameCombo(QComboBox):
         self.setEditable(False)
         self._project: Project | None = None
         self._page_id: str | None = None
-        self._kind: str = "detect"
         self._hover = HoverImagePreview(self)
         self._hover.attach_combo(self, self._path_for_data)
         self.currentIndexChanged.connect(lambda _i: self.selection_changed.emit())
@@ -35,7 +34,7 @@ class AssetNameCombo(QComboBox):
         if isinstance(data, str) and data and self._page_id:
             from screenflow.assets import page_asset_dir
 
-            folder = page_asset_dir(self._project, self._page_id, self._kind)
+            folder = page_asset_dir(self._project, self._page_id)
             if folder.is_dir():
                 for p in folder.iterdir():
                     if p.is_file() and p.stem == data:
@@ -46,7 +45,6 @@ class AssetNameCombo(QComboBox):
         self,
         project: Project | None,
         page_id: str | None,
-        kind: str,
         *,
         selected: str | None = None,
         allow_empty: bool = True,
@@ -54,14 +52,13 @@ class AssetNameCombo(QComboBox):
         keep = selected if selected is not None else self.current_name()
         self._project = project
         self._page_id = page_id
-        self._kind = kind if kind in ("detect", "click") else "detect"
         self.blockSignals(True)
         self.clear()
         if allow_empty:
             self.addItem("—", None)
         assets: list[PageAsset] = []
         if project and page_id:
-            assets = list_page_assets(project, page_id, self._kind)
+            assets = list_page_assets(project, page_id)
         names = {a.name for a in assets}
         for a in assets:
             self.addItem(a.name, a)
@@ -79,14 +76,6 @@ class AssetNameCombo(QComboBox):
         elif self.count():
             self.setCurrentIndex(0)
         self.blockSignals(False)
-
-    def set_kind(self, kind: str, *, selected: str | None = None) -> None:
-        self.bind(
-            self._project,
-            self._page_id,
-            kind,
-            selected=selected if selected is not None else self.current_name(),
-        )
 
     def current_name(self) -> str | None:
         data = self.currentData()
@@ -113,14 +102,11 @@ class AssetNameCombo(QComboBox):
         *,
         selected: str | None = None,
         allow_empty: bool = True,
-        kind: str = "click",
     ) -> None:
         """Fill from an explicit asset list (e.g. steps editor click targets)."""
         keep = selected if selected is not None else self.current_name()
         self._project = project
-        self._kind = kind
         if assets and project:
-            # Infer page_id from first asset relpath pages/{id}/...
             parts = assets[0].relpath.replace("\\", "/").split("/")
             if len(parts) >= 2 and parts[0] == "pages":
                 self._page_id = parts[1]

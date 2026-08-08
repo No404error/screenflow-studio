@@ -235,9 +235,7 @@ class StateTreeEditor(QWidget):
         self.ed_name = QLineEdit()
         self.chk_else = QCheckBox()
         self.cmb_score_kind = QComboBox()
-        self.cmb_source = QComboBox()
         self.cmb_key = AssetNameCombo()
-        self.cmb_source.currentIndexChanged.connect(self._on_source_changed)
         self.ed_roi = QLineEdit()
         self.ed_roi.setPlaceholderText("0.75,1,0.75,1")
         self.spin_const = QDoubleSpinBox()
@@ -246,14 +244,12 @@ class StateTreeEditor(QWidget):
         self.lbl_name = QLabel()
         self.lbl_else = QLabel()
         self.lbl_score_kind = QLabel()
-        self.lbl_source = QLabel()
         self.lbl_key = QLabel()
         self.lbl_roi = QLabel()
         self.lbl_const = QLabel()
         form.addRow(self.lbl_name, self.ed_name)
         form.addRow(self.lbl_else, self.chk_else)
         form.addRow(self.lbl_score_kind, self.cmb_score_kind)
-        form.addRow(self.lbl_source, self.cmb_source)
         form.addRow(self.lbl_key, self.cmb_key)
         form.addRow(self.lbl_roi, self.ed_roi)
         form.addRow(self.lbl_const, self.spin_const)
@@ -390,7 +386,6 @@ class StateTreeEditor(QWidget):
         self.spin_layer_thr.valueChanged.connect(self._on_form_changed)
         self.spin_layer_near.valueChanged.connect(self._on_form_changed)
         self.spin_layer_margin.valueChanged.connect(self._on_form_changed)
-        self.cmb_source.currentIndexChanged.connect(self._on_form_changed)
         self.cmb_key.selection_changed.connect(self._on_form_changed)
         self.ed_roi.editingFinished.connect(self._on_form_changed)
         self.spin_const.valueChanged.connect(self._on_form_changed)
@@ -431,7 +426,6 @@ class StateTreeEditor(QWidget):
         self.lbl_else.setText(t("st_else"))
         self.chk_else.setText(t("st_else_hint"))
         self.lbl_score_kind.setText(t("st_score_kind"))
-        self.lbl_source.setText(t("st_score_source"))
         self.lbl_key.setText(t("st_score_key"))
         self.lbl_roi.setText(t("st_roi"))
         self.lbl_const.setText(t("st_constant"))
@@ -456,24 +450,15 @@ class StateTreeEditor(QWidget):
 
     def _fill_score_combos(self) -> None:
         kind = self.cmb_score_kind.currentData()
-        src = self.cmb_source.currentData()
         self.cmb_score_kind.blockSignals(True)
-        self.cmb_source.blockSignals(True)
         self.cmb_score_kind.clear()
         self.cmb_score_kind.addItem(self.t("st_kind_template"), "template")
         self.cmb_score_kind.addItem(self.t("st_kind_constant"), "constant")
         self.cmb_score_kind.addItem(self.t("st_kind_invert"), "invert")
-        self.cmb_source.clear()
-        self.cmb_source.addItem(self.t("st_src_detect"), "detect")
-        self.cmb_source.addItem(self.t("st_src_click"), "click")
         if kind is not None:
             i = self.cmb_score_kind.findData(kind)
             self.cmb_score_kind.setCurrentIndex(max(0, i))
-        if src is not None:
-            i = self.cmb_source.findData(src)
-            self.cmb_source.setCurrentIndex(max(0, i))
         self.cmb_score_kind.blockSignals(False)
-        self.cmb_source.blockSignals(False)
 
     def _fill_post_modes(self) -> None:
         mode = self.cmb_post_mode.currentData()
@@ -513,34 +498,24 @@ class StateTreeEditor(QWidget):
         return page_to_dict(page)
 
     def refresh_asset_catalogs(self) -> None:
-        """Reload detect/click dropdowns after uploads or library switches."""
+        """Reload feature-image dropdowns after uploads."""
         self._push_steps_catalog()
-        kind = str(self.cmb_source.currentData() or "detect")
         self.cmb_key.bind(
             self._project_for_tpl,
             self._page_id,
-            kind,
             selected=self.cmb_key.current_name(),
         )
 
     def _push_steps_catalog(self) -> None:
         click_assets = []
         if self._project_for_tpl and self._page_id:
-            click_assets = list_page_assets(
-                self._project_for_tpl, self._page_id, "click"
-            )
+            click_assets = list_page_assets(self._project_for_tpl, self._page_id)
         self.steps.set_catalog(
             macros=self._catalog_macros,
             click_keys=self._catalog_clicks,
             click_assets=click_assets,
             project=self._project_for_tpl,
         )
-
-    def _on_source_changed(self, _index: int = 0) -> None:
-        if self._loading:
-            return
-        kind = str(self.cmb_source.currentData() or "detect")
-        self.cmb_key.set_kind(kind)
 
     def bind(self, roots: list[StateNode], *, select_id: str | None = None) -> None:
         self.roots = roots
@@ -713,12 +688,9 @@ class StateTreeEditor(QWidget):
         spec = node.score or ScoreSpec()
         ki = self.cmb_score_kind.findData(spec.kind)
         self.cmb_score_kind.setCurrentIndex(max(0, ki))
-        si = self.cmb_source.findData(spec.source)
-        self.cmb_source.setCurrentIndex(max(0, si))
         self.cmb_key.bind(
             self._project_for_tpl,
             self._page_id,
-            str(spec.source or "detect"),
             selected=spec.key,
         )
         self.ed_roi.setText(",".join(str(x) for x in spec.roi) if spec.roi else "")
@@ -762,23 +734,31 @@ class StateTreeEditor(QWidget):
         for w in (self.spin_layer_thr, self.spin_layer_near, self.spin_layer_margin):
             w.setEnabled(on)
 
+    def _set_form_row_visible(self, label: QLabel, field, visible: bool) -> None:
+        label.setVisible(visible)
+        field.setVisible(visible)
+
     def _on_else_toggled_ui(self, checked: bool) -> None:
-        for w in (
-            self.cmb_score_kind,
-            self.cmb_source,
-            self.cmb_key,
-            self.ed_roi,
-            self.spin_const,
+        # ELSE never scores — hide recognition fields (cleared on flush).
+        show_score = not checked
+        for lbl, w in (
+            (self.lbl_score_kind, self.cmb_score_kind),
+            (self.lbl_key, self.cmb_key),
+            (self.lbl_roi, self.ed_roi),
+            (self.lbl_const, self.spin_const),
         ):
-            w.setEnabled(not checked)
+            self._set_form_row_visible(lbl, w, show_score)
+        if show_score:
+            self._update_score_visibility()
 
     def _update_score_visibility(self) -> None:
+        if self.chk_else.isChecked():
+            return
         kind = self.cmb_score_kind.currentData() or "template"
         is_const = kind == "constant"
-        self.cmb_key.setEnabled(not is_const and not self.chk_else.isChecked())
-        self.cmb_source.setEnabled(not is_const and not self.chk_else.isChecked())
-        self.ed_roi.setEnabled(not is_const and not self.chk_else.isChecked())
-        self.spin_const.setEnabled(is_const and not self.chk_else.isChecked())
+        self.cmb_key.setEnabled(not is_const)
+        self.ed_roi.setEnabled(not is_const)
+        self.spin_const.setEnabled(is_const)
 
     def _update_post_visibility(self) -> None:
         mode = self.cmb_post_mode.currentData() or "until_page"
@@ -808,7 +788,7 @@ class StateTreeEditor(QWidget):
                 if seen:
                     n.is_else = False
                     if n.score is None:
-                        n.score = ScoreSpec(key=n.id, source="detect")
+                        n.score = ScoreSpec(key=n.id)
                 else:
                     seen = True
             if n.children:
@@ -833,7 +813,7 @@ class StateTreeEditor(QWidget):
 
     def _default_detect_key(self) -> str | None:
         if self._project_for_tpl and self._page_id:
-            assets = list_page_assets(self._project_for_tpl, self._page_id, "detect")
+            assets = list_page_assets(self._project_for_tpl, self._page_id)
             if assets:
                 return assets[0].name
         return self.cmb_key.first_asset_name()
@@ -844,7 +824,7 @@ class StateTreeEditor(QWidget):
         return StateNode(
             id=nid,
             name=nid,
-            score=ScoreSpec(key=key, source="detect"),
+            score=ScoreSpec(key=key),
         )
 
     def _add_sibling(self) -> None:
@@ -992,7 +972,6 @@ class StateTreeEditor(QWidget):
             node.score = ScoreSpec(
                 kind=kind,
                 key=self.cmb_key.current_name(),
-                source=str(self.cmb_source.currentData() or "detect"),
                 roi=self._parse_roi(),
                 constant=self.spin_const.value(),
             )

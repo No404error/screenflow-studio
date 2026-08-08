@@ -126,7 +126,6 @@ def _score_from_json(raw: dict[str, Any] | None) -> ScoreSpec | None:
     return ScoreSpec(
         kind=kind,
         key=str(raw["key"]) if raw.get("key") is not None else None,
-        source=str(raw.get("source") or "detect"),
         roi=list(raw["roi"]) if raw.get("roi") else None,
         constant=float(raw.get("constant", 0.0)),
     )
@@ -143,7 +142,6 @@ def _score_to_json(score: ScoreSpec | None) -> dict[str, Any] | None:
     item: dict[str, Any] = {
         "kind": kind,
         "key": score.key,
-        "source": score.source,
     }
     if score.roi:
         item["roi"] = score.roi
@@ -261,7 +259,7 @@ def _legacy_flat_to_tree(
                 "(remove probe_steps / probe_checks)."
             )
         dkey = st.get("detect_key") or name.lower()
-        score = ScoreSpec(kind="template", key=str(dkey), source="detect", roi=st.get("roi"))
+        score = ScoreSpec(kind="template", key=str(dkey), roi=st.get("roi"))
         nodes.append(
             StateNode(
                 id=name,
@@ -331,40 +329,31 @@ def find_node(nodes: list[StateNode], node_id: str) -> StateNode | None:
 
 
 def rebuild_resource_index(project: Project) -> None:
-    """Rebuild detect/click maps and pairs from page definitions (after edits)."""
-    detect_files: dict[str, str] = {}
-    click_files: dict[str, str] = {}
+    """Rebuild feature maps and pairs from page definitions (after edits)."""
+    feature_files: dict[str, str] = {}
     detect_priority: dict[str, int] = {}
     page_pairs: list[tuple[str, str]] = []
     # Bare logical names: only index when unique across pages (no first-writer-wins).
-    bare_detect: dict[str, list[str]] = {}
-    bare_click: dict[str, list[str]] = {}
+    bare_features: dict[str, list[str]] = {}
 
     for page_id, page in project.pages.items():
         ensure_page_asset_dirs(project, page_id)
         sync_page_asset_maps(project, page)
         detect_priority[page_id] = page.detect_priority
-        for k, rel in page.detect_extras.items():
-            detect_files[scoped_asset_key(page_id, k)] = rel
-            bare_detect.setdefault(k, []).append(rel)
-        for k, rel in page.click_map.items():
-            click_files[scoped_asset_key(page_id, k)] = rel
-            bare_click.setdefault(k, []).append(rel)
+        for k, rel in page.feature_map.items():
+            feature_files[scoped_asset_key(page_id, k)] = rel
+            bare_features.setdefault(k, []).append(rel)
         if page.pair_with:
             a, b = page_id, page.pair_with
             pair = (a, b) if a < b else (b, a)
             if pair not in page_pairs:
                 page_pairs.append(pair)
 
-    for k, rels in bare_detect.items():
+    for k, rels in bare_features.items():
         if len(rels) == 1:
-            detect_files[k] = rels[0]
-    for k, rels in bare_click.items():
-        if len(rels) == 1:
-            click_files[k] = rels[0]
+            feature_files[k] = rels[0]
 
-    project.detect_files = detect_files
-    project.click_files = click_files
+    project.feature_files = feature_files
     project.detect_priority = detect_priority
     project.page_pairs = page_pairs
 
@@ -452,9 +441,8 @@ def _runtime_from_json(rt_raw: dict[str, Any]) -> RuntimeConfig:
 def _page_from_json(raw: dict[str, Any], *, page_id: str | None = None) -> PageDef:
     pid = str(page_id or raw["id"])
     _reject_probe(raw, pid)
-    detect_rel = str(raw.get("detect") or f"pages/{pid}/detect/main.png")
-    extras = {str(k): str(v) for k, v in (raw.get("detect_extras") or {}).items()}
-    clicks = {str(k): str(v) for k, v in (raw.get("click") or {}).items()}
+    detect_rel = str(raw.get("detect") or f"pages/{pid}/features/main.png")
+    features = {str(k): str(v) for k, v in (raw.get("features") or {}).items()}
 
     if raw.get("state_tree") is not None:
         tree = [_node_from_json(n) for n in raw["state_tree"]]
@@ -469,18 +457,41 @@ def _page_from_json(raw: dict[str, Any], *, page_id: str | None = None) -> PageD
     if default_post and default_post.tree:
         normalize_sole_unscored_else(default_post.tree)
 
+    detect_roi = _roi_from_json(raw.get("detect_roi"))
+    feature_rois = {
+        str(k): list(r)
+        for k, v in (raw.get("feature_rois") or {}).items()
+        if (r := _roi_from_json(v)) is not None
+    }
+    stem = Path(detect_rel).stem
+    if detect_roi is None and stem in feature_rois:
+        detect_roi = list(feature_rois[stem])
+
     return PageDef(
         page_id=pid,
         detect_relpath=detect_rel,
         name=str(raw.get("name") or pid),
         state_tree=tree,
-        detect_extras=extras,
-        click_map=clicks,
+        feature_map=features,
+        detect_roi=detect_roi,
+        feature_rois=feature_rois,
         pair_with=str(raw["pair_with"]) if raw.get("pair_with") else None,
         detect_priority=int(raw.get("detect_priority", 0)),
         decide_params=_params_from_json(raw.get("decide_params")),
         default_post=default_post,
     )
+
+
+def _roi_from_json(raw: Any) -> list[float] | None:
+    from screenflow.roi import normalize_roi
+
+    if not isinstance(raw, (list, tuple)) or len(raw) != 4:
+        return None
+    try:
+        norm = normalize_roi([float(x) for x in raw])
+    except (TypeError, ValueError):
+        return None
+    return list(norm) if norm else None
 
 
 def page_to_dict(page: PageDef) -> dict[str, Any]:
@@ -490,10 +501,13 @@ def page_to_dict(page: PageDef) -> dict[str, Any]:
         "detect": page.detect_relpath,
         "detect_priority": page.detect_priority,
         "pair_with": page.pair_with,
-        "detect_extras": page.detect_extras,
-        "click": page.click_map,
+        "features": page.feature_map,
         "state_tree": [_node_to_json(n) for n in page.state_tree],
     }
+    if page.detect_roi:
+        item["detect_roi"] = list(page.detect_roi)
+    if page.feature_rois:
+        item["feature_rois"] = {k: list(v) for k, v in page.feature_rois.items()}
     dp = _params_to_json(page.decide_params)
     if dp:
         item["decide_params"] = dp
@@ -581,8 +595,7 @@ def load_project(project_dir: str | Path) -> Project:
         root=root,
         runtime=runtime,
         pages=pages,
-        detect_files={},
-        click_files={},
+        feature_files={},
         macros=macros,
         var_defaults=dict(data.get("vars") or {}),
     )
@@ -680,8 +693,7 @@ def new_blank_project(target_dir: str | Path, name: str = "Untitled Project") ->
         root=root,
         runtime=RuntimeConfig(),
         pages={},
-        detect_files={},
-        click_files={},
+        feature_files={},
         macros={},
     )
     save_project(project)
@@ -689,15 +701,15 @@ def new_blank_project(target_dir: str | Path, name: str = "Untitled Project") ->
 
 
 def import_image_to_project(
-    project: Project, src: str | Path, *, kind: str, logical_key: str
+    project: Project, src: str | Path, *, logical_key: str
 ) -> str:
-    """Legacy helper: store under pages/_shared/{kind}/ when no page context."""
+    """Legacy helper: store under pages/_shared/features/ when no page context."""
     src_path = Path(src)
     if not src_path.exists():
         raise FileNotFoundError(src_path)
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in logical_key)
     ext = src_path.suffix.lower() or ".png"
-    rel = f"pages/_shared/{kind}/{safe}{ext}"
+    rel = f"pages/_shared/features/{safe}{ext}"
     dest = project.root / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src_path, dest)
