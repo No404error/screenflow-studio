@@ -18,6 +18,8 @@ ScreenFlow is a Windows desktop application (Studio) for foreground vision autom
 
 ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进行视觉识别与键鼠操作。识别依赖屏幕截图与图像模板匹配，不依赖目标进程的内存读取或代码注入。
 
+推荐使用 **Web Studio**（Vue + 本机 API）编辑项目：支持变量声明、引用绑定与更清晰的编辑器布局。PySide6 桌面 Studio 仍可作为 legacy 入口保留。
+
 推荐远程仓库名称：`screenflow-studio`。产品显示名称与可执行文件名称保持为 **ScreenFlow**。
 
 ### 能力与限制
@@ -86,11 +88,10 @@ ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进�
 
 ```text
 my_project/
-  project.json              # 运行参数、宏、页面列表等
+  project.json              # 运行参数、宏、页面列表、vars 等
   pages/{page_id}/
     page.json               # 页面检测与状态树定义
-    detect/                 # 识别用图像
-    click/                  # 点击定位用图像
+    features/               # 统一图像库（识别 + 点击）
   layer_templates/          # 可选：可复用状态模板
   scripts/                  # 可选：脚本步骤
 ```
@@ -109,10 +110,39 @@ C:\Users\<用户名>\.screenflow\ui.json
 
 ### 开发者说明
 
-从源码启动 Studio（在仓库根目录执行）：
+**推荐：Web Studio（Vue）** — 编辑器优先界面，支持变量声明与引用绑定：
 
 ```powershell
 python -m pip install -r requirements.txt
+cd web
+npm install
+cd ..
+# 终端 1：API
+python -m studio_api
+# 终端 2：前端
+cd web
+npm run dev
+# 浏览器打开 http://127.0.0.1:5173 （Vite 将 /api 代理到 8787）
+```
+
+或一键（API + Vite，并尝试打开浏览器）：
+
+```powershell
+python .\run_web_studio.py --dev
+```
+
+已构建前端时，可只起 API 并托管 `web/dist`：
+
+```powershell
+cd web
+npm run build
+cd ..
+python .\run_web_studio.py
+```
+
+**Legacy：PySide6 桌面 Studio**（功能并行保留）：
+
+```powershell
 python .\run_studio.py
 ```
 
@@ -208,11 +238,10 @@ Example layout:
 
 ```text
 my_project/
-  project.json              # Runtime settings, macros, page list, etc.
+  project.json              # Runtime, macros, page list, vars, etc.
   pages/{page_id}/
     page.json               # Page detection and state tree
-    detect/                 # Detection images
-    click/                  # Click-target images
+    features/               # Unified image library (detect + click)
   layer_templates/          # Optional reusable state templates
   scripts/                  # Optional script steps
 ```
@@ -231,12 +260,23 @@ Use this software only where permitted by applicable law and by the licenses and
 
 ### Developer notes
 
-Run Studio from source (from the repository root):
+**Recommended: Web Studio (Vue)** — editor-first UI with first-class variables and bindings:
 
 ```powershell
 python -m pip install -r requirements.txt
-python .\run_studio.py
+cd web
+npm install
+cd ..
+python -m studio_api
+# other terminal:
+cd web
+npm run dev
+# open http://127.0.0.1:5173
 ```
+
+Or: `python .\run_web_studio.py --dev`
+
+**Legacy: PySide6 desktop Studio** — still available via `python .\run_studio.py`.
 
 Build the Windows standalone executable to `release/ScreenFlow.exe`:
 

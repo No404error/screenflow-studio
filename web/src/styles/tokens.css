@@ -1,0 +1,50 @@
+:root {
+  /* Surfaces — light workbench, not purple-dashboard */
+  --sf-paper: #f4f6f4;
+  --sf-surface: #ffffff;
+  --sf-surface-2: #eef1ee;
+  --sf-ink: #1a2220;
+  --sf-ink-muted: #5a6864;
+  --sf-ink-faint: #8a9692;
+  --sf-line: #d5ddd8;
+  --sf-line-strong: #b8c4be;
+
+  /* Accent — deep teal */
+  --sf-accent: #0d6e6e;
+  --sf-accent-hover: #0a5858;
+  --sf-accent-soft: #d8efef;
+  --sf-warn: #a65d12;
+  --sf-warn-soft: #fff1dc;
+  --sf-danger: #b42318;
+  --sf-danger-soft: #fdeceb;
+  --sf-ok: #1f7a3f;
+
+  /* Type */
+  --sf-font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --sf-mono: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
+  --sf-fs-xs: 0.75rem;
+  --sf-fs-sm: 0.8125rem;
+  --sf-fs-md: 0.9375rem;
+  --sf-fs-lg: 1.125rem;
+  --sf-fs-xl: 1.5rem;
+  --sf-fs-hero: 2.25rem;
+  --sf-lh: 1.45;
+
+  /* Space */
+  --sf-space-1: 0.25rem;
+  --sf-space-2: 0.5rem;
+  --sf-space-3: 0.75rem;
+  --sf-space-4: 1rem;
+  --sf-space-5: 1.5rem;
+  --sf-space-6: 2rem;
+  --sf-radius: 6px;
+  --sf-radius-lg: 10px;
+
+  --sf-nav-width: 240px;
+  --sf-nav-collapsed: 52px;
+  --sf-runbar-h: 40px;
+  --sf-drawer-h: 280px;
+
+  --sf-shadow-soft: 0 1px 2px rgb(26 34 32 / 6%);
+  --sf-focus: 0 0 0 2px var(--sf-accent-soft), 0 0 0 4px var(--sf-accent);
+}

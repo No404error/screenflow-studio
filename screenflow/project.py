@@ -590,6 +590,13 @@ def load_project(project_dir: str | Path) -> Project:
             continue
         pages[other_id].pair_with = page_id
 
+    var_schema_raw = data.get("var_schema") or {}
+    var_schema: dict[str, dict[str, Any]] = {}
+    if isinstance(var_schema_raw, dict):
+        for k, v in var_schema_raw.items():
+            if isinstance(v, dict):
+                var_schema[str(k)] = dict(v)
+
     project = Project(
         name=str(data.get("name") or root.name),
         root=root,
@@ -598,6 +605,7 @@ def load_project(project_dir: str | Path) -> Project:
         feature_files={},
         macros=macros,
         var_defaults=dict(data.get("vars") or {}),
+        var_schema=var_schema,
     )
     for page in project.pages.values():
         sync_page_asset_maps(project, page)
@@ -654,6 +662,8 @@ def project_to_dict(project: Project) -> dict[str, Any]:
     }
     if project.var_defaults:
         out["vars"] = project.var_defaults
+    if project.var_schema:
+        out["var_schema"] = project.var_schema
     return out
 
 

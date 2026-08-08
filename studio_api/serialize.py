@@ -1,0 +1,101 @@
+"""Project <-> JSON DTO for the Web Studio."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from screenflow.assets import list_page_assets, sync_page_asset_maps
+from screenflow.models import Project
+from screenflow.project import (
+    _macros_from_json,
+    _page_from_json,
+    _runtime_from_json,
+    page_to_dict,
+    project_to_dict,
+    rebuild_resource_index,
+)
+
+
+def full_project_dto(project: Project) -> dict[str, Any]:
+    """Snapshot suitable for the Vue editor (root meta + embedded pages)."""
+    root = project_to_dict(project)
+    pages: dict[str, Any] = {}
+    for pid, page in project.pages.items():
+        sync_page_asset_maps(project, page)
+        doc = page_to_dict(page)
+        doc["assets"] = [
+            {"name": a.name, "relpath": a.relpath, "roi": a.roi}
+            for a in list_page_assets(project, pid)
+        ]
+        pages[pid] = doc
+    root["page_docs"] = pages
+    root["root"] = str(project.root)
+    if project.var_schema:
+        root["var_schema"] = project.var_schema
+    return root
+
+
+def apply_full_project_dto(project: Project, data: dict[str, Any]) -> Project:
+    """Mutate/rebuild in-memory project from a full DTO, keeping the same root."""
+    root_path = project.root
+    runtime = _runtime_from_json(data.get("runtime") or {})
+    macros = _macros_from_json(data.get("macros") or [])
+
+    page_docs = data.get("page_docs") or {}
+    pages: dict[str, Any] = {}
+    # Prefer page_docs keys; fall back to pages id list
+    page_ids: list[str]
+    if isinstance(page_docs, dict) and page_docs:
+        page_ids = list(page_docs.keys())
+    else:
+        raw_pages = data.get("pages") or []
+        page_ids = [str(x) for x in raw_pages]
+
+    for pid in page_ids:
+        raw = page_docs.get(pid) if isinstance(page_docs, dict) else None
+        if not isinstance(raw, dict):
+            # Keep existing page if DTO omitted body
+            if pid in project.pages:
+                pages[pid] = project.pages[pid]
+            continue
+        raw = dict(raw)
+        raw.pop("assets", None)
+        pages[pid] = _page_from_json(raw, page_id=pid)
+
+    for pair in data.get("page_pairs") or []:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            continue
+        a, b = str(pair[0]), str(pair[1])
+        if a in pages and b in pages:
+            pages[a].pair_with = b
+            pages[b].pair_with = a
+
+    var_schema_raw = data.get("var_schema") or {}
+    var_schema: dict[str, dict[str, Any]] = {}
+    if isinstance(var_schema_raw, dict):
+        for k, v in var_schema_raw.items():
+            if isinstance(v, dict):
+                var_schema[str(k)] = dict(v)
+
+    project.name = str(data.get("name") or project.name)
+    project.runtime = runtime
+    project.pages = pages
+    project.macros = macros
+    project.var_defaults = dict(data.get("vars") or {})
+    project.var_schema = var_schema
+    project.root = root_path
+    for page in project.pages.values():
+        sync_page_asset_maps(project, page)
+    rebuild_resource_index(project)
+    return project
+
+
+def resolve_under_root(root: Path, relpath: str) -> Path:
+    rel = Path(str(relpath).replace("\\", "/"))
+    if rel.is_absolute():
+        raise ValueError("absolute paths not allowed")
+    full = (root / rel).resolve()
+    if not str(full).startswith(str(root.resolve())):
+        raise ValueError("path escapes project root")
+    return full

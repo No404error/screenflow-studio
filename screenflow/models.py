@@ -178,6 +178,8 @@ class Project:
     detect_priority: dict[str, int] = field(default_factory=dict)
     # Phase 3 variables store (engine-owned at runtime; schema optional)
     var_defaults: dict[str, Any] = field(default_factory=dict)
+    # UI metadata for vars: name → {type, description}; engine ignores this
+    var_schema: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass

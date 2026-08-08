@@ -97,6 +97,7 @@ class FlowEngine:
             "sticky": sticky is not None,
             "post_mode": normalize_post_mode(sticky.mode) if sticky else None,
             "post_reason": self._last_post_reason if sticky else None,
+            "vars": dict(self.vars),
         }
         if error:
             payload["error"] = error
