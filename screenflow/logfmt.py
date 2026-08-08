@@ -11,6 +11,8 @@ LogEmit = Callable[[str], None]
 _ZH_HINTS = (
     ("Unknown screen", "未识别页面"),
     ("no matching state", "无匹配状态"),
+    ("waiting for another page", "等待命中其他页面"),
+    ("no follow-up case — keep waiting", "后续情况未命中 — 继续等待"),
     ("Action:", "动作:"),
     ("RUNNING", "运行中"),
     ("PAUSED", "已暂停"),

@@ -179,8 +179,21 @@ class FlowEngine:
             frame,
             current_page_id=pr.page_id,
         )
+        reason = str((outcome.detail or {}).get("reason") or "")
         if outcome.skipped:
-            self.elog.detail("  post: unknown page — skip frame")
+            # Sticky post owns the loop — main state tree is not evaluated.
+            if reason == "until_page_wait":
+                self.elog.info(
+                    f"{outcome.short_path or 'post'}: waiting for another page"
+                )
+            elif reason == "no_match_skip":
+                self.elog.info(
+                    f"{outcome.short_path or 'post'}: no follow-up case — keep waiting"
+                )
+            elif reason == "unknown_skip":
+                self.elog.detail("  post: unrecognized page — skip frame")
+            else:
+                self.elog.detail(f"  post: skip ({reason or 'unknown'})")
             return self._last_state
         if outcome.short_path:
             self.elog.info(outcome.short_path)
@@ -188,6 +201,8 @@ class FlowEngine:
             self.elog.detail(f"  post detail: {outcome.detail}")
         if outcome.ended:
             self._sticky = None
+            if reason:
+                self.elog.detail(f"  post ended: {reason}")
         return outcome.short_path or self._last_state
 
     def dispatch(self, screen: np.ndarray, page_result: MatchResult) -> str | None:
