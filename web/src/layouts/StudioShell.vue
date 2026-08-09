@@ -19,6 +19,7 @@ import MacroEditorView from '@/views/MacroEditorView.vue'
 import MacrosOverviewView from '@/views/MacrosOverviewView.vue'
 import PairsEditorView from '@/views/PairsEditorView.vue'
 import PagesOverviewView from '@/views/PagesOverviewView.vue'
+import { useQuitApp } from '@/composables/useQuitApp'
 
 const { t } = useI18n()
 const ui = useUiStore()
@@ -27,6 +28,7 @@ const run = useRunStore()
 const router = useRouter()
 const route = useRoute()
 const aboutOpen = ref(false)
+const { quitApp } = useQuitApp()
 let applyingDeepLink = false
 
 useEscapeKey(() => {
@@ -153,6 +155,9 @@ async function closeProject() {
         </button>
         <button class="sf-btn sf-btn-ghost" @click="closeProject"><I18nText k="close_project" /></button>
         <button class="sf-btn sf-btn-ghost" @click="goHome"><I18nText k="home" /></button>
+        <button type="button" class="sf-btn sf-btn-ghost" @click="quitApp">
+          <I18nText k="quit" />
+        </button>
       </div>
     </header>
 

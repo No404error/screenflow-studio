@@ -70,6 +70,8 @@ export const useUiStore = defineStore('ui', () => {
   const reopenLast = ref(true)
   const reopenPath = ref<string | null>(null)
   const pageWizardOpen = ref(false)
+  /** Local host process has exited; show a static “you can close this tab” screen. */
+  const appExited = ref(false)
   const unsavedPrompt = ref<null | { resolve: (v: 'save' | 'discard' | 'cancel') => void }>(null)
   const dialog = ref<AppDialog | null>(null)
 
@@ -114,6 +116,11 @@ export const useUiStore = defineStore('ui', () => {
 
   async function clearRecent() {
     const s = await api.clearRecent()
+    recent.value = s.recent || []
+  }
+
+  async function removeRecent(path: string) {
+    const s = await api.removeRecent(path)
     recent.value = s.recent || []
   }
 
@@ -198,6 +205,7 @@ export const useUiStore = defineStore('ui', () => {
     reopenLast,
     reopenPath,
     pageWizardOpen,
+    appExited,
     unsavedPrompt,
     dialog,
     select,
@@ -205,6 +213,7 @@ export const useUiStore = defineStore('ui', () => {
     loadSettings,
     setLang,
     clearRecent,
+    removeRecent,
     askUnsaved,
     answerUnsaved,
     askAlert,

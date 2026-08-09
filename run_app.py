@@ -8,6 +8,7 @@ With --engine-runner → elevated/plain engine child (same binary, second proces
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -18,7 +19,16 @@ if str(ROOT) not in sys.path:
 from screenflow.elevate import ENGINE_RUNNER_FLAG
 
 
+def _ensure_stdio() -> None:
+    """Windowed (console=False) PyInstaller builds leave stdout/stderr as None."""
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> int:
+    _ensure_stdio()
     args = list(sys.argv[1:] if argv is None else argv)
     if ENGINE_RUNNER_FLAG in args:
         args = [a for a in args if a != ENGINE_RUNNER_FLAG]

@@ -7,7 +7,7 @@ $Root = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $Root
 
 Write-Host "==> Installing build deps"
-python -m pip install -q -r requirements.txt pyinstaller pyautogui
+python -m pip install -q -r requirements.txt pyinstaller pyautogui pystray Pillow
 
 $Web = Join-Path $Root "web"
 if (Test-Path (Join-Path $Web "package.json")) {

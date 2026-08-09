@@ -46,6 +46,22 @@ def test_touch_recent_writes_user_config(tmp_path, monkeypatch):
     assert Path(recent[0]["path"]) == proj.resolve()
 
 
+def test_remove_recent_drops_one_entry(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "config_dir", lambda: tmp_path / ".screenflow")
+    monkeypatch.setattr(
+        settings, "legacy_settings_path", lambda: tmp_path / "missing.json"
+    )
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    settings.touch_recent(a, "A")
+    settings.touch_recent(b, "B")
+    assert [e["name"] for e in settings.get_recent()] == ["B", "A"]
+    settings.remove_recent(a)
+    assert [e["name"] for e in settings.get_recent()] == ["B"]
+
+
 def test_resolve_reopen_prunes_stale(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "config_dir", lambda: tmp_path / ".screenflow")
     monkeypatch.setattr(

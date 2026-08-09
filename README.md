@@ -41,15 +41,20 @@ ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进�
 
 ### 使用打包版本
 
-1. 启动 `release/ScreenFlow.exe`（单文件；首次启动需解压运行时，可能稍慢），浏览器中打开 Web Studio。
-2. 打开或新建项目文件夹。
+1. 启动 `release/ScreenFlow.exe`（单文件；首次启动需解压运行时，可能稍慢）。本机会出现**系统托盘**图标，并尝试打开浏览器中的 Web Studio。
+2. 打开或新建项目文件夹。首页「最近」可单独移除某一条，或清空全部。
 3. 添加页面：创建匹配方案与画面特征，并为特征选用方案（可设「用作本页识别」）。
 4. 编辑情况树：为不同界面情况配置动作；未匹配时使用「默认情况」。
 5. 按需配置后续观察。
 6. **保存**后点击 **开始**。默认**提权外部引擎**可能弹出 UAC；也可选用 **inline（进程内）** 模式。
 7. 可在界面中切换语言。
 
-关闭应用时会尝试停止引擎进程。若仍残留，可在任务管理器中结束对应的 `ScreenFlow.exe`。
+**退出与后台**
+
+- 关掉浏览器标签**不会**结束程序；托盘仍在，可再次「打开 Studio」。
+- 正式退出：托盘右键「退出」，或网页上的「退出 ScreenFlow」。
+- 托盘退出时若有未保存更改：可选打开 Studio 保存、丢弃并退出，或取消。
+- 退出时会停止引擎；若仍残留，可在任务管理器中结束对应的 `ScreenFlow.exe`。
 
 Web Studio 与引擎可共用同一可执行文件：提权模式下以 `--engine-runner` 启动第二进程；inline 模式不另起进程。
 
@@ -113,6 +118,15 @@ C:\Users\<用户名>\.screenflow\ui.json
 
 ### 开发者说明
 
+**入口脚本**
+
+| 脚本 | 作用 |
+|------|------|
+| `run_app.py` | 统一入口（打包为 `ScreenFlow.exe`）。默认 → Web Studio；带 `--engine-runner` → 引擎子进程 |
+| `run_web_studio.py` | 开发/本机启动 Studio（API + 浏览器；可选 `--dev` Vite、`--no-tray`） |
+| `run_runner.py` | 引擎进程（TCP 受 Studio 控制；提权模式由 Studio 拉起） |
+| `python -m studio_api` | 仅起 API（可选 `--serve-ui` 托管 `web/dist`） |
+
 **Web Studio（Vue）**：
 
 ```powershell
@@ -120,19 +134,11 @@ python -m pip install -r requirements.txt
 cd web
 npm install
 cd ..
-# 终端 1：API
-python -m studio_api
-# 终端 2：前端
-cd web
-npm run dev
-# 浏览器打开 http://127.0.0.1:5173 （Vite 将 /api 代理到 8787）
-```
-
-或一键（API + Vite，并尝试打开浏览器）：
-
-```powershell
+# 一键：API + Vite，并尝试打开浏览器（Windows 下默认显示托盘）
 python .\run_web_studio.py --dev
 ```
+
+也可分终端：`python -m studio_api` + `cd web && npm run dev`（浏览器打开 http://127.0.0.1:5173，Vite 将 `/api` 代理到 8787）。
 
 已构建前端时，可只起 API 并托管 `web/dist`：
 
@@ -143,7 +149,7 @@ cd ..
 python .\run_web_studio.py
 ```
 
-构建 Windows 单文件可执行程序（输出至 `release/ScreenFlow.exe`；需先构建 `web/dist`）：
+构建 Windows 单文件可执行程序（输出至 `release/ScreenFlow.exe`；脚本内会构建 `web/dist`）：
 
 ```powershell
 powershell -File .\scripts\build_exe.ps1
@@ -188,15 +194,20 @@ Recommended remote repository name: `screenflow-studio`. The product name and ex
 
 ### Using the packaged build
 
-1. Launch `release/ScreenFlow.exe` (standalone; first start may be slower while unpacking) and open Web Studio in the browser.
-2. Open or create a project folder.
+1. Launch `release/ScreenFlow.exe` (standalone; first start may be slower while unpacking). A **system tray** icon appears and the browser opens Web Studio.
+2. Open or create a project folder. On the welcome page, remove one recent entry or clear all.
 3. Add pages: create match setups and screen features, then select a setup on each feature (mark one for page recognition).
 4. Edit the case tree; use the default case when nothing else matches.
 5. Configure post-listen where needed.
 6. **Save**, then **Start**. Default **elevated external runner** may show UAC; **inline** mode runs in-process without UAC.
 7. Switch UI language in the app as needed.
 
-Closing the app attempts to stop the engine. If a process remains, end the corresponding `ScreenFlow.exe` in Task Manager.
+**Quit vs background**
+
+- Closing the browser tab does **not** quit the app; the tray remains and can reopen Studio.
+- To exit: tray → Quit, or **Quit ScreenFlow** in the web UI.
+- If the tray Quit runs while edits are unsaved: open Studio to save, discard and quit, or cancel.
+- Exit stops the engine; if a process remains, end the corresponding `ScreenFlow.exe` in Task Manager.
 
 Web Studio and the engine can share one executable: elevate mode starts a second process with `--engine-runner`; inline mode does not.
 
@@ -260,6 +271,15 @@ Use this software only where permitted by applicable law and by the licenses and
 
 ### Developer notes
 
+**Entry scripts**
+
+| Script | Role |
+|--------|------|
+| `run_app.py` | Unified entry (packaged as `ScreenFlow.exe`). Default → Web Studio; `--engine-runner` → engine child |
+| `run_web_studio.py` | Local Studio (API + browser; optional `--dev` Vite, `--no-tray`) |
+| `run_runner.py` | Engine process (TCP; spawned under elevate mode) |
+| `python -m studio_api` | API only (optional `--serve-ui` for `web/dist`) |
+
 **Web Studio (Vue)**:
 
 ```powershell
@@ -267,16 +287,12 @@ python -m pip install -r requirements.txt
 cd web
 npm install
 cd ..
-python -m studio_api
-# other terminal:
-cd web
-npm run dev
-# open http://127.0.0.1:5173
+python .\run_web_studio.py --dev
 ```
 
-Or: `python .\run_web_studio.py --dev`
+Or split terminals: `python -m studio_api` + `cd web && npm run dev` (http://127.0.0.1:5173).
 
-Build the Windows standalone executable to `release/ScreenFlow.exe` (build `web/dist` first):
+Build the Windows standalone executable to `release/ScreenFlow.exe` (`build_exe.ps1` builds `web/dist`):
 
 ```powershell
 powershell -File .\scripts\build_exe.ps1

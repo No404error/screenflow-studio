@@ -14,6 +14,7 @@ binaries = []
 hiddenimports = (
     collect_submodules("screenflow")
     + collect_submodules("studio_api")
+    + collect_submodules("pystray")
 )
 
 # Bundle built Web UI when present (run npm run build in web/ first).

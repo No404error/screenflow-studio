@@ -115,8 +115,22 @@ def touch_recent(path: str | Path, name: str) -> None:
 
 
 def remove_recent(path: str | Path) -> None:
-    root = str(Path(path).resolve())
-    entries = [e for e in get_recent() if e["path"] != root]
+    raw = str(path).strip()
+    try:
+        root = str(Path(path).resolve())
+    except Exception:
+        root = raw
+    entries: list[dict[str, str]] = []
+    for e in get_recent():
+        ep = e["path"]
+        if ep == root or ep == raw:
+            continue
+        try:
+            if str(Path(ep).resolve()) == root:
+                continue
+        except Exception:
+            pass
+        entries.append(e)
     update_ui_settings(recent=entries)
 
 

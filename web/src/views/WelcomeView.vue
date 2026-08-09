@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { useI18n } from '@/i18n'
+import { useQuitApp } from '@/composables/useQuitApp'
 import { useUiStore } from '@/stores/ui'
 import { useProjectStore } from '@/stores/project'
 
@@ -10,6 +11,7 @@ const { t } = useI18n()
 const ui = useUiStore()
 const project = useProjectStore()
 const router = useRouter()
+const { quitApp } = useQuitApp()
 const error = ref('')
 const busy = ref(false)
 
@@ -65,6 +67,16 @@ async function onClearRecent() {
   await ui.clearRecent()
 }
 
+async function onRemoveRecent(path: string, ev: Event) {
+  ev.stopPropagation()
+  ev.preventDefault()
+  try {
+    await ui.removeRecent(path)
+  } catch (e) {
+    error.value = String(e)
+  }
+}
+
 async function onReopenToggle(ev: Event) {
   const on = (ev.target as HTMLInputElement).checked
   ui.reopenLast = on
@@ -92,10 +104,20 @@ async function onReopenToggle(ev: Event) {
         </button>
       </div>
       <ul v-if="ui.recent.length">
-        <li v-for="r in ui.recent" :key="r.path">
-          <button class="recent-item" @click="openRecent(r.path)">
+        <li v-for="r in ui.recent" :key="r.path" class="recent-row">
+          <button type="button" class="recent-item" :disabled="busy" @click="openRecent(r.path)">
             <span class="name">{{ r.name }}</span>
             <span class="path sf-mono">{{ r.path }}</span>
+          </button>
+          <button
+            type="button"
+            class="sf-btn sf-btn-ghost recent-remove"
+            :disabled="busy"
+            :title="t('remove_recent_a11y')"
+            :aria-label="t('remove_recent_a11y')"
+            @click="onRemoveRecent(r.path, $event)"
+          >
+            ×
           </button>
         </li>
       </ul>
@@ -111,6 +133,9 @@ async function onReopenToggle(ev: Event) {
           <option value="zh">中文</option>
         </select>
       </div>
+      <button type="button" class="sf-btn sf-btn-ghost quit" :disabled="busy" @click="quitApp">
+        <I18nText k="quit" />
+      </button>
     </aside>
   </div>
 </template>
@@ -163,6 +188,10 @@ h1 {
   border-radius: calc(var(--sf-radius) + 4px);
   padding: var(--sf-space-4);
 }
+.quit {
+  margin-top: var(--sf-space-4);
+  width: 100%;
+}
 .recent-head {
   display: flex;
   align-items: center;
@@ -179,8 +208,18 @@ h1 {
   margin: 0;
   padding: 0;
 }
+.recent-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.15rem;
+  border-radius: var(--sf-radius);
+}
+.recent-row:hover {
+  background: var(--sf-accent-soft);
+}
 .recent-item {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   text-align: left;
   border: none;
   background: transparent;
@@ -191,8 +230,15 @@ h1 {
   gap: 0.15rem;
   cursor: pointer;
 }
-.recent-item:hover {
-  background: var(--sf-accent-soft);
+.recent-remove {
+  flex-shrink: 0;
+  align-self: center;
+  min-width: 2rem;
+  opacity: 0.55;
+}
+.recent-row:hover .recent-remove,
+.recent-remove:focus-visible {
+  opacity: 1;
 }
 .name {
   font-weight: 600;

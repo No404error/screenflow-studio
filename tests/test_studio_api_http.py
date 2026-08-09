@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from screenflow.project import new_blank_project
 from studio_api.app import app
 from studio_api.engine_bridge import bridge
+from studio_api import lifecycle
 
 
 def test_health_and_open_save(tmp_path: Path) -> None:
@@ -200,3 +201,43 @@ def test_visuals_crud_and_shared_select(tmp_path: Path) -> None:
     assert vid not in page["visuals"]
     assert page["features"][a_id].get("visual_id") in (None, "")
     assert page["features"][b_id].get("visual_id") in (None, "")
+
+
+def test_remove_recent_http(tmp_path: Path, monkeypatch) -> None:
+    from studio_api import settings as ui_settings
+
+    monkeypatch.setattr(ui_settings, "config_dir", lambda: tmp_path / ".screenflow")
+    monkeypatch.setattr(
+        ui_settings, "legacy_settings_path", lambda: tmp_path / "missing.json"
+    )
+    a = tmp_path / "ra"
+    b = tmp_path / "rb"
+    a.mkdir()
+    b.mkdir()
+    ui_settings.touch_recent(a, "A")
+    ui_settings.touch_recent(b, "B")
+    client = TestClient(app)
+    r = client.post("/api/settings/remove-recent", json={"path": str(a)})
+    assert r.status_code == 200
+    names = [e["name"] for e in r.json()["recent"]]
+    assert names == ["B"]
+
+
+def test_editor_state_and_shutdown_guard() -> None:
+    lifecycle.reset_for_tests()
+    bridge.stop()
+    client = TestClient(app)
+
+    assert client.get("/api/app/editor-state").json()["dirty"] is False
+    assert client.put("/api/app/editor-state", json={"dirty": True}).json()["dirty"] is True
+    blocked = client.post("/api/app/shutdown", json={"force": False})
+    assert blocked.status_code == 409
+
+    ok = client.post("/api/app/shutdown", json={"force": True})
+    assert ok.status_code == 200
+    assert ok.json()["ok"] is True
+    again = client.post("/api/app/shutdown", json={"force": True})
+    assert again.status_code == 200
+    assert again.json()["status"] == "already"
+    lifecycle.reset_for_tests()
+

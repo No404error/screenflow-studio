@@ -57,6 +57,11 @@ export const api = {
       body: JSON.stringify(patch),
     }),
   clearRecent: () => request<SettingsDTO>('/api/settings/clear-recent', { method: 'POST' }),
+  removeRecent: (path: string) =>
+    request<SettingsDTO>('/api/settings/remove-recent', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
   setLang: (lang: string) =>
     request<{ lang: string }>('/api/settings/lang', {
       method: 'POST',
@@ -238,6 +243,17 @@ export const api = {
     request('/api/engine/runtime', {
       method: 'PATCH',
       body: JSON.stringify({ runtime }),
+    }),
+  setEditorState: (body: { dirty: boolean }) =>
+    request<{ dirty: boolean }>('/api/app/editor-state', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  getEditorState: () => request<{ dirty: boolean }>('/api/app/editor-state'),
+  shutdownApp: (opts?: { force?: boolean }) =>
+    request<{ ok: boolean; status: string }>('/api/app/shutdown', {
+      method: 'POST',
+      body: JSON.stringify({ force: Boolean(opts?.force) }),
     }),
 }
 

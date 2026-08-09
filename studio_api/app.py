@@ -43,6 +43,7 @@ from studio_api import settings as ui_settings
 from studio_api.i18n import I18n
 
 from studio_api.engine_bridge import bridge
+from studio_api import lifecycle
 from studio_api.serialize import (
     apply_full_project_dto,
     full_project_dto,
@@ -166,9 +167,21 @@ class StartBody(BaseModel):
     allow_warnings: bool = False
 
 
+class EditorStateBody(BaseModel):
+    dirty: bool = False
+
+
+class ShutdownBody(BaseModel):
+    force: bool = False
+
+
 class FolderBody(BaseModel):
     initial: str | None = None
     title: str | None = None
+
+
+class RemoveRecentBody(BaseModel):
+    path: str
 
 
 class TemplateSaveBody(BaseModel):
@@ -179,6 +192,33 @@ class TemplateSaveBody(BaseModel):
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.put("/api/app/editor-state")
+def put_editor_state(body: EditorStateBody) -> dict[str, Any]:
+    """Browser reports unsaved edits so tray Quit can warn (option A)."""
+    lifecycle.set_editor_dirty(bool(body.dirty))
+    return {"dirty": lifecycle.is_editor_dirty()}
+
+
+@app.get("/api/app/editor-state")
+def get_editor_state() -> dict[str, Any]:
+    return {"dirty": lifecycle.is_editor_dirty()}
+
+
+@app.post("/api/app/shutdown")
+def app_shutdown(body: ShutdownBody | None = None) -> dict[str, Any]:
+    """Stop engine and exit the host process (Web Studio / tray Quit)."""
+    force = bool(body.force) if body else False
+    if lifecycle.is_editor_dirty() and not force:
+        raise HTTPException(
+            409,
+            {
+                "code": "unsaved_changes",
+                "message": "Unsaved changes; save/discard in Studio or pass force=true",
+            },
+        )
+    return lifecycle.perform_shutdown()
 
 
 def add_api_root_hint() -> None:
@@ -232,6 +272,15 @@ def patch_settings(body: SettingsPatch) -> dict[str, Any]:
 @app.post("/api/settings/clear-recent")
 def clear_recent() -> dict[str, Any]:
     ui_settings.clear_recent()
+    return get_settings()
+
+
+@app.post("/api/settings/remove-recent")
+def remove_recent(body: RemoveRecentBody) -> dict[str, Any]:
+    path = (body.path or "").strip()
+    if not path:
+        raise HTTPException(400, "path required")
+    ui_settings.remove_recent(path)
     return get_settings()
 
 

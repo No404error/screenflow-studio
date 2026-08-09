@@ -30,6 +30,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Do not open a browser",
     )
+    parser.add_argument(
+        "--no-tray",
+        action="store_true",
+        help="Do not show the system tray icon",
+    )
     args = parser.parse_args(argv)
 
     dist = ROOT / "web" / "dist"
@@ -43,6 +48,13 @@ def main(argv: list[str] | None = None) -> int:
         from studio_api.app import add_api_root_hint
 
         add_api_root_hint()
+
+    studio_url = (
+        "http://127.0.0.1:5173" if args.dev else f"http://{args.host}:{args.port}"
+    )
+    from studio_api import lifecycle
+
+    lifecycle.configure(studio_url=studio_url)
 
     vite_proc: subprocess.Popen | None = None
     if args.dev:
@@ -69,14 +81,41 @@ def main(argv: list[str] | None = None) -> int:
 
     import uvicorn
 
+    # Windowed exe: stdout/stderr may be None; uvicorn ColourizedFormatter needs isatty().
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+    use_tray = not args.no_tray and sys.platform == "win32"
+    if use_tray:
+        try:
+            from studio_api.tray_host import start_tray
+
+            start_tray()
+        except Exception as exc:
+            print(f"tray unavailable: {exc}", file=sys.stderr)
+
+    config = uvicorn.Config(
+        "studio_api.app:app",
+        host=args.host,
+        port=args.port,
+        reload=False,
+        use_colors=False,
+    )
+    server = uvicorn.Server(config)
+    lifecycle.set_server(server)
+
     try:
-        uvicorn.run(
-            "studio_api.app:app",
-            host=args.host,
-            port=args.port,
-            reload=False,
-        )
+        server.run()
     finally:
+        if use_tray:
+            try:
+                from studio_api.tray_host import stop_tray
+
+                stop_tray()
+            except Exception:
+                pass
         if vite_proc and vite_proc.poll() is None:
             vite_proc.terminate()
     return 0
