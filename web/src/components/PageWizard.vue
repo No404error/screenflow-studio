@@ -2,14 +2,20 @@
 import { ref } from 'vue'
 import { api } from '@/api/client'
 import { useI18n } from '@/i18n'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 import { useProjectStore } from '@/stores/project'
 import { useUiStore } from '@/stores/ui'
 import AssetUploadWizard from '@/components/AssetUploadWizard.vue'
+import PrivacyRedactDialog from '@/components/PrivacyRedactDialog.vue'
 import { bindFeatureFromScreenshot } from '@/utils/bindFromScreenshot'
 
 const emit = defineEmits<{ close: []; done: [pageId: string] }>()
 
 const { t } = useI18n()
+useEscapeKey(() => {
+  onClose()
+  return true
+})
 const project = useProjectStore()
 const ui = useUiStore()
 
@@ -19,7 +25,10 @@ const openCases = ref(true)
 const busy = ref(false)
 const error = ref('')
 
+/** After redact: feeds AssetUploadWizard. */
 const pendingFile = ref<{ file: File; url: string; name: string } | null>(null)
+/** Before redact: new file pick. */
+const redactPending = ref<{ file: File; url: string; name: string } | null>(null)
 const prepared = ref<{
   file: File
   url: string
@@ -34,10 +43,11 @@ function onFile(ev: Event) {
   input.value = ''
   if (!f) return
   clearPrepared()
-  const url = URL.createObjectURL(f)
-  pendingFile.value = {
+  cancelPending()
+  cancelRedact()
+  redactPending.value = {
     file: f,
-    url,
+    url: URL.createObjectURL(f),
     name: f.name.replace(/\.[^.]+$/, '') || 'feature',
   }
 }
@@ -45,6 +55,21 @@ function onFile(ev: Event) {
 function clearPrepared() {
   if (prepared.value) URL.revokeObjectURL(prepared.value.url)
   prepared.value = null
+}
+
+function cancelRedact() {
+  if (redactPending.value) URL.revokeObjectURL(redactPending.value.url)
+  redactPending.value = null
+}
+
+function onRedactDone(file: File) {
+  const held = redactPending.value
+  if (!held) return
+  const name = held.name
+  const url = URL.createObjectURL(file)
+  cancelRedact()
+  cancelPending()
+  pendingFile.value = { file, url, name }
 }
 
 function cancelPending() {
@@ -71,6 +96,7 @@ function onUploadDone(payload: {
 }
 
 function skipImage() {
+  cancelRedact()
   cancelPending()
   clearPrepared()
 }
@@ -89,20 +115,22 @@ async function finish() {
     if (!pageId) throw new Error('page missing')
     if (prepared.value) {
       const label = prepared.value.name || 'main'
-      await api.createFeature(pageId, { label })
-      await project.refreshFromServer()
+      project.applyServerSnapshot(await api.createFeature(pageId, { label }))
       const feats = project.project?.page_docs[pageId]?.features || {}
       const created =
-        Object.values(feats).find((x) => x.label === label && !x.link?.asset) ||
+        Object.values(feats).find((x) => x.label === label && !x.visual_id) ||
         Object.values(feats).at(-1)
       if (!created) throw new Error('feature missing')
-      await bindFeatureFromScreenshot(pageId, created.id, prepared.value.file, {
-        searchRoi: prepared.value.searchRoi,
-        contentRoi: prepared.value.contentRoi,
-        name: label,
-      })
-      await api.patchFeature(pageId, created.id, { recognize: true })
-      await project.refreshFromServer()
+      project.applyServerSnapshot(
+        await bindFeatureFromScreenshot(pageId, created.id, prepared.value.file, {
+          searchRoi: prepared.value.searchRoi,
+          contentRoi: prepared.value.contentRoi,
+          name: label,
+        }),
+      )
+      project.applyServerSnapshot(
+        await api.patchFeature(pageId, created.id, { recognize: true }),
+      )
     }
     clearPrepared()
     if (openCases.value) {
@@ -120,6 +148,7 @@ async function finish() {
 }
 
 function onClose() {
+  cancelRedact()
   cancelPending()
   clearPrepared()
   emit('close')
@@ -195,6 +224,13 @@ function onClose() {
       </div>
     </div>
 
+    <PrivacyRedactDialog
+      v-if="redactPending"
+      :src="redactPending.url"
+      :file="redactPending.file"
+      @close="cancelRedact"
+      @done="onRedactDone"
+    />
     <AssetUploadWizard
       v-if="pendingFile"
       :src="pendingFile.url"
@@ -238,7 +274,7 @@ h3 {
   max-width: 100%;
   max-height: 160px;
   object-fit: contain;
-  background: #111;
+  background: var(--sf-media-well);
   border-radius: var(--sf-radius);
 }
 .ready {

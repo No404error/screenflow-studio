@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { api } from '@/api/client'
 import { t } from '@/i18n'
 import type { Issue, ProjectDTO, StateNode } from '@/types/project'
+import { mergeDirtyPageDocs } from '@/utils/mergeProject'
 import { collectVarRefs, undeclaredRefs } from '@/utils/vars'
 import { useUiStore } from './ui'
 import { useRunStore } from './run'
@@ -138,9 +139,29 @@ export const useProjectStore = defineStore('project', () => {
     if (dirty.value) await save()
   }
 
+  /**
+   * Apply a server project DTO. If local edits are dirty, keep unsaved page/editor
+   * fields and leave dirty=true.
+   */
+  function applyServerSnapshot(p: ProjectDTO) {
+    if (!p.page_docs) p.page_docs = {}
+    if (!p.vars) p.vars = {}
+    if (!p.var_schema) p.var_schema = {}
+    if (!p.macros) p.macros = []
+    if (!p.page_pairs) p.page_pairs = []
+    if (!p.runtime) p.runtime = emptyRuntime()
+    if (dirty.value && project.value) {
+      project.value = mergeDirtyPageDocs(project.value, p)
+      dirty.value = true
+      return
+    }
+    project.value = p
+    dirty.value = false
+  }
+
   async function refreshFromServer() {
     const p = await api.getProject()
-    setProject(p)
+    applyServerSnapshot(p)
   }
 
   async function validate() {
@@ -168,6 +189,7 @@ export const useProjectStore = defineStore('project', () => {
     undeclared,
     markDirty,
     setProject,
+    applyServerSnapshot,
     open,
     create,
     save,

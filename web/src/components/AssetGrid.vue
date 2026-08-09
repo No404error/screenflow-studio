@@ -4,6 +4,7 @@ import { api } from '@/api/client'
 import { useI18n } from '@/i18n'
 import { usePrefsStore } from '@/stores/prefs'
 import { useProjectStore } from '@/stores/project'
+import { useUiStore } from '@/stores/ui'
 import SectionTitle from '@/components/SectionTitle.vue'
 import SelectVisualDialog from '@/components/SelectVisualDialog.vue'
 import type { FeatureDef } from '@/types/project'
@@ -19,6 +20,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const prefs = usePrefsStore()
 const project = useProjectStore()
+const ui = useUiStore()
 const selected = ref<FeatureDef | null>(null)
 const pickTarget = ref<FeatureDef | null>(null)
 
@@ -35,7 +37,7 @@ const selectedLive = computed(() => {
 
 function setupOf(f: FeatureDef) {
   if (!f.visual_id) return null
-  return page.value?.visuals?.[f.visual_id] || f.visual || f.link || null
+  return page.value?.visuals?.[f.visual_id] || null
 }
 
 function setupLabel(f: FeatureDef): string {
@@ -44,6 +46,10 @@ function setupLabel(f: FeatureDef): string {
 }
 
 function selectFeature(f: FeatureDef) {
+  if (selected.value?.id === f.id) {
+    clearSelection()
+    return
+  }
   selected.value = f
   emit('select', f.id)
 }
@@ -54,54 +60,87 @@ function clearSelection() {
 }
 
 async function addFeature() {
-  const label = prompt(t('feature_label_prompt'), t('default_feature_name'))
+  const label = await ui.askPrompt({
+    title: t('feature_label_prompt'),
+    initial: t('default_feature_name'),
+  })
   if (label == null) return
   try {
-    await api.createFeature(props.pageId, { label: label.trim() || t('default_feature_name') })
-    await project.refreshFromServer()
+    const dto = await api.createFeature(props.pageId, {
+      label: label.trim() || t('default_feature_name'),
+    })
+    project.applyServerSnapshot(dto)
   } catch (e) {
-    alert(String(e))
+    ui.showToast(String(e), 'danger')
   }
 }
 
 async function unbind(f: FeatureDef) {
-  if (!confirm(t('confirm_unbind_feature', { name: f.label || f.id }))) return
-  await api.unbindFeature(props.pageId, f.id)
-  await project.refreshFromServer()
+  if (
+    !(await ui.askConfirm({
+      title: t('confirm_unbind_feature', { name: f.label || f.id }),
+      danger: true,
+      confirmLabel: t('unbind'),
+    }))
+  ) {
+    return
+  }
+  project.applyServerSnapshot(await api.unbindFeature(props.pageId, f.id))
 }
 
 async function removeFeature(f: FeatureDef) {
-  if (!confirm(t('confirm_delete_named', { name: f.label || f.id }))) return
-  await api.deleteFeature(props.pageId, f.id)
+  if (
+    !(await ui.askConfirm({
+      title: t('confirm_delete_named', { name: f.label || f.id }),
+      danger: true,
+      confirmLabel: t('delete'),
+    }))
+  ) {
+    return
+  }
+  project.applyServerSnapshot(await api.deleteFeature(props.pageId, f.id))
   if (selected.value?.id === f.id) clearSelection()
-  await project.refreshFromServer()
 }
 
 async function setRecognize(f: FeatureDef) {
-  await api.patchFeature(props.pageId, f.id, { recognize: true })
-  await project.refreshFromServer()
+  project.applyServerSnapshot(
+    await api.patchFeature(props.pageId, f.id, { recognize: true }),
+  )
+}
+
+async function clearRecognize(f: FeatureDef) {
+  if (page.value?.recognize_with !== f.id) return
+  project.applyServerSnapshot(
+    await api.patchFeature(props.pageId, f.id, { recognize: false }),
+  )
 }
 
 async function rename(f: FeatureDef) {
-  const next = prompt(t('feature_label_prompt'), f.label || f.id)
+  const next = await ui.askPrompt({
+    title: t('feature_label_prompt'),
+    initial: f.label || f.id,
+  })
   if (next == null) return
-  await api.patchFeature(props.pageId, f.id, { label: next.trim() || f.id })
-  await project.refreshFromServer()
+  project.applyServerSnapshot(
+    await api.patchFeature(props.pageId, f.id, { label: next.trim() || f.id }),
+  )
 }
 
 async function renameId(f: FeatureDef) {
-  const next = prompt(t('feature_id_prompt'), f.id)
+  const next = await ui.askPrompt({
+    title: t('feature_id_prompt'),
+    initial: f.id,
+  })
   if (next == null) return
   const id = next.trim()
   if (!id || id === f.id) return
   try {
-    await api.patchFeature(props.pageId, f.id, { id })
+    project.applyServerSnapshot(await api.patchFeature(props.pageId, f.id, { id }))
     if (selected.value?.id === f.id) selected.value = { ...f, id }
-    await project.refreshFromServer()
     const live = page.value?.features?.[id]
     if (live) selected.value = live
   } catch (e) {
-    alert(String(e))
+    ui.showToast(String(e), 'danger')
   }
 }
 </script>
@@ -128,7 +167,11 @@ async function renameId(f: FeatureDef) {
         :key="f.id"
         class="card"
         :class="{ sel: selectedLive?.id === f.id, unbound: !setupOf(f) }"
+        tabindex="0"
+        role="button"
         @click="selectFeature(f)"
+        @keydown.enter.prevent="selectFeature(f)"
+        @keydown.space.prevent="selectFeature(f)"
       >
         <figcaption class="card-main">
           <span class="fname">{{ f.label || f.id }}</span>
@@ -188,6 +231,14 @@ async function renameId(f: FeatureDef) {
               @click="setRecognize(selectedLive)"
             >
               <I18nText k="mark_for_page" />
+            </button>
+            <button
+              v-else
+              type="button"
+              class="sf-btn sf-btn-ghost"
+              @click="clearRecognize(selectedLive)"
+            >
+              <I18nText k="unmark_for_page" />
             </button>
           </div>
           <div class="sf-actions-danger">
@@ -325,8 +376,8 @@ async function renameId(f: FeatureDef) {
   gap: 0.3rem;
 }
 .warn {
-  background: color-mix(in srgb, #c45c26 18%, transparent);
-  color: #a34a1a;
+  background: var(--sf-warn-soft);
+  color: var(--sf-warn);
 }
 .preview-row {
   display: flex;

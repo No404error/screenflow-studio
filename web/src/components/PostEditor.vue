@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 import { useProjectStore } from '@/stores/project'
 import SectionHelp from '@/components/SectionHelp.vue'
@@ -26,6 +26,7 @@ const emit = defineEmits<{ 'update:modelValue': [PostListen | null] }>()
 const { t } = useI18n()
 const project = useProjectStore()
 const treeOpen = ref(false)
+const detailsEl = ref<HTMLDetailsElement | null>(null)
 
 const enabled = computed({
   get: () => !!props.modelValue,
@@ -37,12 +38,31 @@ const enabled = computed({
         end_on_unknown: false,
         tree: [],
       })
+      openPanel()
     } else {
       emit('update:modelValue', null)
     }
     project.markDirty()
   },
 })
+
+function openPanel() {
+  void nextTick(() => {
+    if (detailsEl.value) detailsEl.value.open = true
+  })
+}
+
+onMounted(() => {
+  if (props.modelValue) openPanel()
+})
+
+// When enabling, open once — user may still collapse via summary.
+watch(
+  () => !!props.modelValue,
+  (on, was) => {
+    if (on && !was) openPanel()
+  },
+)
 
 function patch(p: Partial<PostListen>) {
   if (!props.modelValue) return
@@ -58,7 +78,7 @@ const caseCount = computed(() => props.modelValue?.tree?.length ?? 0)
 </script>
 
 <template>
-  <details class="post" :open="!!modelValue">
+  <details ref="detailsEl" class="post">
     <summary>
       <span class="sum-left">
         {{ t(titleKey) }}
@@ -116,6 +136,7 @@ const caseCount = computed(() => props.modelValue?.tree?.length ?? 0)
         </button>
       </div>
     </div>
+    <p v-else class="off-hint"><I18nText k="post_disabled_hint" /></p>
   </details>
 
   <PostTreeModal
@@ -142,6 +163,10 @@ summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  list-style: disclosure-closed;
+}
+summary::-webkit-details-marker {
+  display: revert;
 }
 .sum-left {
   display: inline-flex;
@@ -149,6 +174,11 @@ summary {
 }
 .body {
   margin-top: var(--sf-space-3);
+}
+.off-hint {
+  margin: var(--sf-space-3) 0 0;
+  font-size: var(--sf-fs-sm);
+  color: var(--sf-ink-faint);
 }
 .check {
   display: flex;

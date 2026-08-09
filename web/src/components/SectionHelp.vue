@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from '@/i18n'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const props = defineProps<{
   helpKey: string
@@ -15,6 +16,20 @@ const text = computed(() => {
 })
 
 const title = computed(() => t('help_dialog_title'))
+
+function toggle() {
+  open.value = !open.value
+}
+
+function close() {
+  open.value = false
+}
+
+useEscapeKey(() => {
+  if (!open.value) return false
+  close()
+  return true
+})
 </script>
 
 <template>
@@ -24,20 +39,21 @@ const title = computed(() => t('help_dialog_title'))
       class="q"
       :title="t('help_button_a11y')"
       :aria-label="t('help_button_a11y')"
-      @click.stop="open = true"
+      :aria-expanded="open"
+      @click.stop="toggle"
     >
       ?
     </button>
     <Teleport to="body">
-      <div v-if="open" class="mask" @click.self="open = false">
+      <div v-if="open" class="mask" @click.self="close">
         <div class="dialog sf-panel" role="dialog" :aria-label="title">
           <header>
             <h3>{{ title }}</h3>
-            <button type="button" class="sf-btn sf-btn-ghost" @click="open = false">×</button>
+            <button type="button" class="sf-btn sf-btn-ghost" @click="close">×</button>
           </header>
           <pre class="body">{{ text }}</pre>
           <footer>
-            <button type="button" class="sf-btn sf-btn-primary" @click="open = false">{{ t('ok') }}</button>
+            <button type="button" class="sf-btn sf-btn-primary" @click="close">{{ t('ok') }}</button>
           </footer>
         </div>
       </div>

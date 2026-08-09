@@ -4,20 +4,21 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from screenflow.models import FeatureDef, PageDef, Project, StateNode, VisualDef
+from screenflow.models import FeatureDef, PageDef, Project, SourceDef, StateNode, VisualDef
 from screenflow.roi import normalize_roi
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
 FEATURES_DIR = "features"
+SOURCES_DIR = "sources"
+LEGACY_SOURCE_STEM = "source"
 
 
 @dataclass
 class PageAsset:
-    """One template image file under a page's features/ folder (模板库条目)."""
+    """One derived template crop under a page's features/ folder."""
 
     name: str  # stem
     relpath: str  # relative to project root
-    # Search ROI is NOT stored on templates — it belongs to VisualDef.
 
 
 def resolve_asset_path(project: Project, relpath: str | Path) -> Path:
@@ -44,15 +45,17 @@ def page_asset_relpath(page_id: str, filename: str) -> str:
     return f"pages/{page_id}/{FEATURES_DIR}/{filename}"
 
 
-SOURCE_STEM = "source"
+def page_sources_dir(project: Project, page_id: str) -> Path:
+    return page_dir(project, page_id) / SOURCES_DIR
 
 
 def page_source_relpath(page_id: str, filename: str) -> str:
-    return f"pages/{page_id}/{filename}"
+    return f"pages/{page_id}/{SOURCES_DIR}/{filename}"
 
 
 def ensure_page_asset_dirs(project: Project, page_id: str) -> None:
     page_asset_dir(project, page_id).mkdir(parents=True, exist_ok=True)
+    page_sources_dir(project, page_id).mkdir(parents=True, exist_ok=True)
     page_dir(project, page_id).mkdir(parents=True, exist_ok=True)
 
 
@@ -101,11 +104,15 @@ def add_page_visual(
     visual_id: str | None = None,
     search_roi: list[float] | None = None,
     content_roi: list[float] | None = None,
+    source_id: str | None = None,
 ) -> VisualDef:
     """Create a match setup (Visual). Does not select it on any feature."""
     rel = str(template).replace("\\", "/").strip()
     if not rel:
         raise ValueError("empty template")
+    sid = str(source_id).strip() if source_id else None
+    if sid and sid not in page.sources:
+        raise ValueError(f"unknown source_id: {sid}")
     vid = (visual_id or "").strip() or new_visual_id(page, preferred=Path(rel).stem)
     if vid in page.visuals:
         raise ValueError(f"visual id exists: {vid}")
@@ -117,6 +124,7 @@ def add_page_visual(
         asset=rel,
         search_roi=list(norm) if norm else None,
         content_roi=list(cnorm) if cnorm else None,
+        source_id=sid,
     )
     page.visuals[vid] = vis
     return vis
@@ -130,6 +138,7 @@ def update_page_visual(
     template: str | None = None,
     search_roi: list[float] | None | object = ...,
     content_roi: list[float] | None | object = ...,
+    source_id: str | None | object = ...,
 ) -> VisualDef:
     vis = page.visuals.get(visual_id)
     if vis is None:
@@ -150,6 +159,14 @@ def update_page_visual(
         else:
             cnorm = normalize_roi(content_roi)
             vis.content_roi = list(cnorm) if cnorm else None
+    if source_id is not ...:
+        if source_id is None or not str(source_id).strip():
+            vis.source_id = None
+        else:
+            sid = str(source_id).strip()
+            if sid not in page.sources:
+                raise ValueError(f"unknown source_id: {sid}")
+            vis.source_id = sid
     return vis
 
 
@@ -185,10 +202,12 @@ def bind_feature(
     *,
     search_roi: list[float] | None = None,
     content_roi: list[float] | None = None,
+    source_id: str | None = None,
 ) -> FeatureDef:
     """
-    Ensure a Visual exists for this template+ROI and select it on the feature.
-    Updates the feature's current Visual in place when already selected.
+    Always create a new Visual and select it on the feature.
+    Never mutates an existing Visual (safe when setups are shared).
+    Use update_page_visual to edit a setup in place.
     """
     feat = page.features.get(feature_id)
     if feat is None:
@@ -196,21 +215,8 @@ def bind_feature(
     rel = str(asset).replace("\\", "/").strip()
     if not rel:
         raise ValueError("empty asset")
-    prev = page.feature_visual(feature_id)
     norm = normalize_roi(search_roi)
-    if content_roi is not None:
-        cnorm = normalize_roi(content_roi)
-    elif prev and prev.asset == rel and prev.content_roi:
-        cnorm = list(prev.content_roi)
-    else:
-        cnorm = None
-    if prev is not None:
-        prev.asset = rel
-        prev.search_roi = list(norm) if norm else None
-        prev.content_roi = list(cnorm) if cnorm else None
-        if not (prev.label or "").strip():
-            prev.label = feat.label or prev.id
-        return feat
+    cnorm = normalize_roi(content_roi) if content_roi is not None else None
     vis = add_page_visual(
         page,
         template=rel,
@@ -218,43 +224,33 @@ def bind_feature(
         visual_id=new_visual_id(page, preferred=feature_id),
         search_roi=list(norm) if norm else None,
         content_roi=list(cnorm) if cnorm else None,
+        source_id=source_id,
     )
     feat.visual_id = vis.id
     return feat
 
 
-def set_feature_visual(
-    page: PageDef,
-    feature_id: str,
-    template: str,
-    *,
-    search_roi: list[float] | None = None,
-    content_roi: list[float] | None = None,
-) -> FeatureDef:
-    """Alias for bind_feature — create/update Visual and select it."""
-    return bind_feature(
-        page,
-        feature_id,
-        template,
-        search_roi=search_roi,
-        content_roi=content_roi,
-    )
+def new_source_id(page: PageDef, *, preferred: str | None = None) -> str:
+    base = _safe_stem(preferred or "s") or "s"
+    if not base.startswith("s"):
+        base = f"s_{base}"
+    if base not in page.sources:
+        return base
+    n = 2
+    while f"{base}_{n}" in page.sources:
+        n += 1
+    return f"{base}_{n}"
 
 
-def clear_feature_visual(page: PageDef, feature_id: str) -> FeatureDef:
-    """Alias for unbind_feature — clear the selected Visual."""
-    return unbind_feature(page, feature_id)
-
-
-def set_page_source(
+def add_page_source(
     project: Project,
     page_id: str,
     src: str | Path,
-) -> str:
-    """
-    Copy a full-window screenshot as the page reference image.
-    Returns project-relative path. Replaces any previous source.* file.
-    """
+    *,
+    label: str = "",
+    source_id: str | None = None,
+) -> SourceDef:
+    """Append a page original (never replaces other originals)."""
     page = project.pages.get(page_id)
     if page is None:
         raise KeyError(page_id)
@@ -262,46 +258,146 @@ def set_page_source(
     if not src_path.exists():
         raise FileNotFoundError(src_path)
     ensure_page_asset_dirs(project, page_id)
-    clear_page_source_files(project, page_id)
+    preferred = (source_id or "").strip() or None
+    sid = preferred or new_source_id(page, preferred=src_path.stem)
+    if preferred and sid in page.sources:
+        raise ValueError(f"source id exists: {sid}")
     ext = src_path.suffix.lower() or ".png"
     if ext not in IMAGE_SUFFIXES:
         ext = ".png"
-    dest = page_dir(project, page_id) / f"{SOURCE_STEM}{ext}"
+    dest_dir = page_sources_dir(project, page_id)
+    dest = dest_dir / f"{sid}{ext}"
+    n = 2
+    base = sid
+    while dest.exists() or sid in page.sources:
+        sid = f"{base}_{n}"
+        dest = dest_dir / f"{sid}{ext}"
+        n += 1
     shutil.copy2(src_path, dest)
     rel = page_source_relpath(page_id, dest.name)
-    page.source = rel
-    return rel
+    src_def = SourceDef(
+        id=sid,
+        label=(label or sid).strip() or sid,
+        path=rel,
+    )
+    page.sources[sid] = src_def
+    return src_def
 
 
-def clear_page_source_files(project: Project, page_id: str) -> None:
-    folder = page_dir(project, page_id)
-    if not folder.is_dir():
-        return
-    for path in folder.iterdir():
-        if path.is_file() and path.stem == SOURCE_STEM and path.suffix.lower() in IMAGE_SUFFIXES:
-            path.unlink(missing_ok=True)
+def update_page_source(
+    page: PageDef,
+    source_id: str,
+    *,
+    label: str | None = None,
+) -> SourceDef:
+    src = page.sources.get(source_id)
+    if src is None:
+        raise KeyError(source_id)
+    if label is not None:
+        src.label = label.strip() or src.id
+    return src
 
 
-def clear_page_source(project: Project, page_id: str) -> None:
+def delete_page_source(project: Project, page_id: str, source_id: str) -> bool:
+    """Delete an original and cascade-delete visuals that use it."""
     page = project.pages.get(page_id)
     if page is None:
         raise KeyError(page_id)
-    clear_page_source_files(project, page_id)
-    page.source = None
+    src = page.sources.get(source_id)
+    if src is None:
+        return False
+    dead = [vid for vid, v in page.visuals.items() if v.source_id == source_id]
+    for vid in dead:
+        delete_page_visual(page, vid)
+    path = resolve_asset_path(project, src.path)
+    if path.is_file():
+        path.unlink(missing_ok=True)
+    del page.sources[source_id]
+    return True
+
+
+def migrate_legacy_source_files(project: Project, page: PageDef) -> bool:
+    """
+    Move pages/{id}/source.* into sources/ and rewrite SourceDef.path.
+    Returns True if anything changed.
+    """
+    changed = False
+    folder = page_dir(project, page.page_id)
+    if not folder.is_dir():
+        return False
+    ensure_page_asset_dirs(project, page.page_id)
+    for path in list(folder.iterdir()):
+        if not path.is_file():
+            continue
+        if path.stem != LEGACY_SOURCE_STEM or path.suffix.lower() not in IMAGE_SUFFIXES:
+            continue
+        # Find SourceDef pointing at this legacy file, or create s_legacy
+        rel_old = f"pages/{page.page_id}/{path.name}".replace("\\", "/")
+        target = None
+        for s in page.sources.values():
+            if str(s.path).replace("\\", "/") == rel_old:
+                target = s
+                break
+        if target is None and "s_legacy" not in page.sources:
+            target = SourceDef(id="s_legacy", label="s_legacy", path=rel_old)
+            page.sources["s_legacy"] = target
+            for vis in page.visuals.values():
+                if not vis.source_id and vis.content_roi:
+                    vis.source_id = "s_legacy"
+        elif target is None:
+            target = page.sources.get("s_legacy")
+        if target is None:
+            continue
+        dest = page_sources_dir(project, page.page_id) / f"{target.id}{path.suffix.lower()}"
+        if not dest.exists():
+            shutil.move(str(path), str(dest))
+        else:
+            path.unlink(missing_ok=True)
+        new_rel = page_source_relpath(page.page_id, dest.name)
+        if target.path != new_rel:
+            target.path = new_rel
+            changed = True
+        elif path.exists():
+            changed = True
+    # Also rewrite any SourceDef still pointing at legacy stem path
+    for s in page.sources.values():
+        rel = str(s.path).replace("\\", "/")
+        parts = rel.split("/")
+        if len(parts) == 3 and parts[0] == "pages" and parts[1] == page.page_id:
+            stem = Path(parts[2]).stem
+            if stem == LEGACY_SOURCE_STEM:
+                src_file = resolve_asset_path(project, rel)
+                if src_file.is_file():
+                    dest = page_sources_dir(project, page.page_id) / f"{s.id}{src_file.suffix.lower()}"
+                    if not dest.exists():
+                        shutil.move(str(src_file), str(dest))
+                    s.path = page_source_relpath(page.page_id, dest.name)
+                    changed = True
+    return changed
+
+
+def set_page_source(
+    project: Project,
+    page_id: str,
+    src: str | Path,
+) -> str:
+    """Back-compat: append an original (replaces old replace-single semantics)."""
+    src_def = add_page_source(project, page_id, src, label="source", source_id=None)
+    return src_def.path
+
+
+def clear_page_source(project: Project, page_id: str) -> None:
+    """Back-compat: delete all page originals (cascades visuals)."""
+    page = project.pages.get(page_id)
+    if page is None:
+        raise KeyError(page_id)
+    for sid in list(page.sources.keys()):
+        delete_page_source(project, page_id, sid)
 
 
 def unbind_feature(page: PageDef, feature_id: str) -> FeatureDef:
     """Clear the feature's selected match setup (Visual remains on the page)."""
     return select_feature_visual(page, feature_id, None)
-
-
-def delete_page_feature(page: PageDef, feature_id: str) -> bool:
-    if feature_id not in page.features:
-        return False
-    del page.features[feature_id]
-    if page.recognize_with == feature_id:
-        page.recognize_with = None
-    return True
 
 
 def _iter_nodes(nodes: list[StateNode]):
@@ -319,6 +415,30 @@ def _rewrite_feature_refs(nodes: list[StateNode], old_id: str, new_id: str) -> N
                 step.target = new_id
         if n.post and n.post.tree:
             _rewrite_feature_refs(n.post.tree, old_id, new_id)
+
+
+def _clear_feature_refs(nodes: list[StateNode], feature_id: str) -> None:
+    """Clear score.key / click targets that referenced a deleted feature."""
+    for n in _iter_nodes(nodes):
+        if n.score and (n.score.key or "").strip() == feature_id:
+            n.score.key = ""
+        for step in n.actions or []:
+            if step.op == "click" and str(step.target or "") == feature_id:
+                step.target = ""
+        if n.post and n.post.tree:
+            _clear_feature_refs(n.post.tree, feature_id)
+
+
+def delete_page_feature(page: PageDef, feature_id: str) -> bool:
+    if feature_id not in page.features:
+        return False
+    del page.features[feature_id]
+    if page.recognize_with == feature_id:
+        page.recognize_with = None
+    _clear_feature_refs(page.state_tree, feature_id)
+    if page.default_post and page.default_post.tree:
+        _clear_feature_refs(page.default_post.tree, feature_id)
+    return True
 
 
 def rename_page_feature(
@@ -360,17 +480,30 @@ def rename_page_feature(
     return feat
 
 
-def feature_link_ok(project: Project, page: PageDef, feature_id: str | None) -> bool:
-    """True when the feature exists, has a complete Visual, and the template file is present."""
+def feature_setup_problem(
+    project: Project, page: PageDef, feature_id: str | None
+) -> str | None:
+    """
+    None if the feature is runnable; otherwise a validate i18n key suffix:
+    - ``unselected`` — no match setup chosen / incomplete setup
+    - ``file_missing`` — setup selected but template file is absent
+    """
     if not feature_id:
-        return False
+        return "unselected"
     feat = page.features.get(str(feature_id))
     if feat is None or not feat.is_linked():
-        return False
+        return "unselected"
     vis = page.feature_visual(feature_id)
     if vis is None or not vis.is_complete():
-        return False
-    return resolve_asset_path(project, vis.asset).is_file()
+        return "unselected"
+    if not resolve_asset_path(project, vis.asset).is_file():
+        return "file_missing"
+    return None
+
+
+def feature_link_ok(project: Project, page: PageDef, feature_id: str | None) -> bool:
+    """True when the feature exists, has a complete Visual, and the template file is present."""
+    return feature_setup_problem(project, page, feature_id) is None
 
 
 def list_page_assets(project: Project, page_id: str) -> list[PageAsset]:
@@ -397,7 +530,7 @@ def upload_page_asset(
 ) -> PageAsset:
     """
     Copy a template image into the page's features/ folder.
-    Does not create a feature or Visual — call bind_feature / set_feature_visual.
+    Does not create a feature or Visual — call bind_feature / select_feature_visual.
     `roi` is ignored (templates do not own search ROI).
     """
     del roi
@@ -434,7 +567,21 @@ def delete_page_asset(project: Project, page_id: str, name: str) -> bool:
             removed = True
     page = project.pages.get(page_id)
     if page is not None and removed_rels:
-        dead = [vid for vid, v in page.visuals.items() if v.asset in removed_rels]
+        norm_removed = {r.replace("\\", "/") for r in removed_rels}
+        stems = {Path(r).stem for r in norm_removed}
+
+        def _matches(asset: str) -> bool:
+            rel = str(asset or "").replace("\\", "/").strip()
+            if rel in norm_removed:
+                return True
+            # Same page features/ folder, same stem
+            if Path(rel).stem in stems and f"pages/{page_id}/{FEATURES_DIR}/" in rel.replace(
+                "\\", "/"
+            ):
+                return True
+            return False
+
+        dead = [vid for vid, v in page.visuals.items() if _matches(v.asset)]
         for vid in dead:
             delete_page_visual(page, vid)
     return removed
@@ -457,5 +604,6 @@ def scoped_asset_key(page_id: str, name: str) -> str:
 
 
 def sync_page_asset_maps(project: Project, page: PageDef) -> None:
-    """Ensure page asset dirs exist (features are not inventoried from disk)."""
+    """Ensure page dirs exist; migrate legacy source.* into sources/."""
     ensure_page_asset_dirs(project, page.page_id)
+    migrate_legacy_source_files(project, page)

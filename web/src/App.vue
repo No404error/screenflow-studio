@@ -6,6 +6,7 @@ import { useUiStore } from '@/stores/ui'
 import { usePrefsStore } from '@/stores/prefs'
 import { useRunStore } from '@/stores/run'
 import { useProjectStore } from '@/stores/project'
+import AppDialogHost from '@/components/AppDialogHost.vue'
 
 const ui = useUiStore()
 const prefs = usePrefsStore()
@@ -71,7 +72,8 @@ function toastText(msg: string) {
 
 <template>
   <router-view />
-  <div v-if="ui.toast" class="toast">{{ toastText(ui.toast) }}</div>
+  <AppDialogHost />
+  <div v-if="ui.toast" class="toast" :class="ui.toastSeverity">{{ toastText(ui.toast) }}</div>
 </template>
 
 <style scoped>
@@ -89,6 +91,13 @@ function toastText(msg: string) {
   max-width: min(90vw, 420px);
   text-align: center;
   animation: fade 0.2s ease;
+  box-shadow: inset 3px 0 0 transparent;
+}
+.toast.danger {
+  box-shadow: inset 3px 0 0 var(--sf-danger);
+}
+.toast.ok {
+  box-shadow: inset 3px 0 0 var(--sf-ok);
 }
 @keyframes fade {
   from {

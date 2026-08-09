@@ -57,18 +57,6 @@ export function removeNodeFromTree(roots: StateNode[], id: string): StateNode[] 
   return roots
 }
 
-export function moveNodeInTree(roots: StateNode[], id: string, dir: -1 | 1): boolean {
-  const loc = locateNode(roots, id)
-  if (!loc) return false
-  const j = loc.index + dir
-  if (j < 0 || j >= loc.siblings.length) return false
-  const a = loc.siblings[loc.index]
-  loc.siblings[loc.index] = loc.siblings[j]
-  loc.siblings[j] = a
-  pinElseLast(loc.siblings)
-  return true
-}
-
 /** Keep default-case (ELSE) pinned at the end of a sibling list. */
 export function pinElseLast(siblings: StateNode[]): void {
   const elseNodes = siblings.filter(isElse)

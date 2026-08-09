@@ -5,7 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from screenflow.assets import list_page_assets, sync_page_asset_maps
+from screenflow.assets import (
+    feature_link_ok,
+    list_page_assets,
+    resolve_asset_path,
+    sync_page_asset_maps,
+)
 from screenflow.models import Project
 from screenflow.project import (
     _macros_from_json,
@@ -17,31 +22,50 @@ from screenflow.project import (
 )
 
 
-def _visual_dto(vis) -> dict[str, Any]:
+def _source_dto(src) -> dict[str, Any]:
+    return {
+        "id": src.id,
+        "label": src.label or src.id,
+        "path": src.path,
+    }
+
+
+def _visual_dto(project: Project, vis) -> dict[str, Any]:
+    file_ok = False
+    if vis.is_complete():
+        try:
+            file_ok = resolve_asset_path(project, vis.asset).is_file()
+        except Exception:
+            file_ok = False
     return {
         "id": vis.id,
         "label": vis.label or vis.id,
         "asset": vis.asset,
         "template": vis.asset,
+        "source_id": vis.source_id,
         "search_roi": list(vis.search_roi) if vis.search_roi else None,
         "content_roi": list(vis.content_roi) if vis.content_roi else None,
-        "complete": vis.is_complete(),
+        "complete": bool(file_ok),
+        "file_missing": bool(vis.is_complete() and not file_ok),
     }
 
 
-def _feature_dto(page, feat) -> dict[str, Any]:
+def _feature_dto(project: Project, page, feat) -> dict[str, Any]:
     """Feature + selected Visual (via visual_id)."""
     vis = page.feature_visual(feat.id)
+    runnable = feature_link_ok(project, page, feat.id)
     out: dict[str, Any] = {
         "id": feat.id,
         "label": feat.label or feat.id,
         "notes": feat.notes or "",
         "visual_id": feat.visual_id,
-        "linked": feat.is_linked() and vis is not None and vis.is_complete(),
+        # Runnable for Start (selection + template file present)
+        "linked": runnable,
+        # Selection resolves to a Visual object (may still miss file)
         "has_visual": feat.has_visual() and vis is not None,
     }
-    if vis and vis.asset:
-        payload = _visual_dto(vis)
+    if vis is not None:
+        payload = _visual_dto(project, vis)
         out["link"] = payload  # back-compat for older UI fields
         out["visual"] = payload
     else:
@@ -59,8 +83,11 @@ def full_project_dto(project: Project) -> dict[str, Any]:
         doc = page_to_dict(page)
         doc["detect"] = page.recognize_asset() or ""
         doc["detect_roi"] = page.recognize_roi()
-        doc["visuals"] = {vid: _visual_dto(v) for vid, v in page.visuals.items()}
-        doc["features"] = {fid: _feature_dto(page, f) for fid, f in page.features.items()}
+        doc["sources"] = {sid: _source_dto(s) for sid, s in page.sources.items()}
+        doc["visuals"] = {vid: _visual_dto(project, v) for vid, v in page.visuals.items()}
+        doc["features"] = {
+            fid: _feature_dto(project, page, f) for fid, f in page.features.items()
+        }
         doc["assets"] = [
             {"name": a.name, "relpath": a.relpath}
             for a in list_page_assets(project, pid)
@@ -95,7 +122,21 @@ def apply_full_project_dto(project: Project, data: dict[str, Any]) -> Project:
                 pages[pid] = project.pages[pid]
             continue
         raw = dict(raw)
-        raw.pop("assets", None)
+        # Strip Studio convenience fields so nested link/detect cannot re-promote
+        for junk in ("assets", "detect", "detect_roi"):
+            raw.pop(junk, None)
+        feats = raw.get("features")
+        if isinstance(feats, dict):
+            cleaned: dict[str, Any] = {}
+            for k, v in feats.items():
+                if isinstance(v, dict):
+                    fv = dict(v)
+                    for fk in ("link", "visual", "linked", "has_visual", "complete"):
+                        fv.pop(fk, None)
+                    cleaned[str(k)] = fv
+                else:
+                    cleaned[str(k)] = v
+            raw["features"] = cleaned
         pages[pid] = _page_from_json(raw, page_id=pid)
 
     for pair in data.get("page_pairs") or []:

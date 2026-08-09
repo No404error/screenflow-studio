@@ -10,7 +10,6 @@ type PrefsSnapshot = {
   navCollapsed?: boolean
   drawerOpen?: boolean
   drawerTab?: DrawerTab
-  templateLibraryOpen?: boolean
 }
 
 function readStored(): PrefsSnapshot {
@@ -47,7 +46,6 @@ export const usePrefsStore = defineStore('prefs', () => {
       ? stored.drawerTab
       : 'controls',
   )
-  const templateLibraryOpen = ref(!!stored.templateLibraryOpen)
 
   function persist() {
     writeStored({
@@ -55,14 +53,10 @@ export const usePrefsStore = defineStore('prefs', () => {
       navCollapsed: navCollapsed.value,
       drawerOpen: drawerOpen.value,
       drawerTab: drawerTab.value,
-      templateLibraryOpen: templateLibraryOpen.value,
     })
   }
 
-  watch(
-    [showFeatureIds, navCollapsed, drawerOpen, drawerTab, templateLibraryOpen],
-    persist,
-  )
+  watch([showFeatureIds, navCollapsed, drawerOpen, drawerTab], persist)
 
   function toggleNav() {
     navCollapsed.value = !navCollapsed.value
@@ -77,7 +71,6 @@ export const usePrefsStore = defineStore('prefs', () => {
     navCollapsed,
     drawerOpen,
     drawerTab,
-    templateLibraryOpen,
     toggleNav,
     toggleDrawer,
   }

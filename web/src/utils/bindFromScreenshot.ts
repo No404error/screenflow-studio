@@ -1,7 +1,10 @@
 import { api } from '@/api/client'
-import { cropFileByRoi } from '@/utils/cropUpload'
+import type { ProjectDTO } from '@/types/project'
+import { createVisualFromOriginal } from '@/utils/createVisualFromScreenshot'
 
-/** Upload page source + cropped artwork, then bind feature with both ROIs. */
+/**
+ * Upload a new page original + cropped template, create a match setup, select it.
+ */
 export async function bindFeatureFromScreenshot(
   pageId: string,
   featureId: string,
@@ -11,14 +14,26 @@ export async function bindFeatureFromScreenshot(
     contentRoi: number[]
     name: string
   },
-) {
-  await api.uploadPageSource(pageId, file)
-  const toSend = await cropFileByRoi(file, payload.contentRoi)
-  const uploaded = await api.uploadAsset(pageId, toSend, payload.name || undefined)
-  await api.bindFeature(pageId, featureId, {
-    asset: uploaded.relpath,
-    search_roi: payload.searchRoi,
-    content_roi: payload.contentRoi,
+  opts?: { beforeSourceIds?: Set<string>; beforeVisualIds?: Set<string> },
+): Promise<ProjectDTO> {
+  const beforeVisuals = opts?.beforeVisualIds || new Set<string>()
+  let dto = await createVisualFromOriginal(pageId, {
+    file,
+    searchRoi: payload.searchRoi,
+    contentRoi: payload.contentRoi,
+    name: payload.name,
+    beforeSourceIds: opts?.beforeSourceIds || new Set(),
   })
-  return uploaded
+  const visuals = dto.page_docs[pageId]?.visuals || {}
+  let createdId: string | null = null
+  for (const id of Object.keys(visuals)) {
+    if (!beforeVisuals.has(id)) {
+      createdId = id
+      break
+    }
+  }
+  if (!createdId) createdId = Object.keys(visuals).at(-1) || null
+  if (!createdId) throw new Error('visual missing after create')
+  dto = await api.selectFeatureVisual(pageId, featureId, createdId)
+  return dto
 }

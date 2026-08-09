@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const props = defineProps<{
   src: string
@@ -11,6 +12,10 @@ const props = defineProps<{
 const emit = defineEmits<{ close: []; save: [number[] | null] }>()
 
 const { t } = useI18n()
+useEscapeKey(() => {
+  emit('close')
+  return true
+})
 const imgRef = ref<HTMLImageElement | null>(null)
 const dragging = ref(false)
 const start = ref<{ x: number; y: number } | null>(null)

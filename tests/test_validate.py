@@ -123,6 +123,42 @@ def test_macro_click_missing_is_warning_not_error():
         assert not any(i.level == "error" and "ok" in i.text for i in issues)
 
 
+def test_macro_click_ok_if_any_page_has_bound_feature():
+    """Same feature id unbound on page B must not fail when page A is bound."""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        for pid in ("a", "b"):
+            (root / "pages" / pid / "features").mkdir(parents=True)
+            (root / "pages" / pid / "features" / "main.png").write_bytes(b"x")
+            (root / "pages" / pid / "features" / "btn.png").write_bytes(b"x")
+        page_a = make_page(
+            "a",
+            detect="pages/a/features/main.png",
+            features={"btn": "pages/a/features/btn.png", "main": "pages/a/features/main.png"},
+            state_tree=[StateNode(id="DEFAULT", is_else=True, actions=[])],
+        )
+        from screenflow.models import FeatureDef
+
+        page_b = make_page(
+            "b",
+            detect="pages/b/features/main.png",
+            features={"main": "pages/b/features/main.png"},
+            state_tree=[StateNode(id="DEFAULT", is_else=True, actions=[])],
+        )
+        page_b.features["btn"] = FeatureDef(id="btn", label="btn", visual_id=None)
+        macros = {
+            "m": MacroDef(
+                id="m",
+                name="M",
+                steps=[ActionStep("click", "btn")],
+            )
+        }
+        issues = validate_for_start(
+            _proj(root, {"a": page_a, "b": page_b}, macros=macros), I18n().t
+        )
+        assert not any(i.level == "error" and "btn" in i.text for i in issues)
+
+
 def test_else_sole_ok():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
@@ -203,4 +239,35 @@ def test_unbound_referenced_feature_blocks_start():
         issues = validate_for_start(_proj(root, {"p": page}), I18n().t)
         errs = [i for i in issues if i.level == "error"]
         assert any("need_art" in i.text.lower() or "Need art" in i.text for i in errs)
+        assert any("match setup" in i.text.lower() or "匹配方案" in i.text for i in errs)
+
+
+def test_file_missing_match_setup_message():
+    from screenflow.models import FeatureDef, VisualDef
+
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        feat = root / "pages" / "p" / "features"
+        feat.mkdir(parents=True)
+        (feat / "main.png").write_bytes(b"x")
+        page = make_page(
+            "p",
+            detect="pages/p/features/main.png",
+            state_tree=[
+                StateNode(
+                    id="a",
+                    name="A",
+                    score=ScoreSpec(key="gone"),
+                    actions=[ActionStep("wait", 0.1)],
+                ),
+                StateNode(id="DEFAULT", is_else=True, actions=[]),
+            ],
+        )
+        page.visuals["v"] = VisualDef(
+            id="v", label="v", asset="pages/p/features/missing.png"
+        )
+        page.features["gone"] = FeatureDef(id="gone", label="Gone", visual_id="v")
+        issues = validate_for_start(_proj(root, {"p": page}), I18n().t)
+        errs = [i for i in issues if i.level == "error"]
+        assert any("missing" in i.text.lower() or "缺失" in i.text for i in errs)
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from '@/api/client'
 import { useProjectStore } from '@/stores/project'
 import type { MatchSetup } from '@/types/project'
@@ -28,8 +28,9 @@ async function pick(v: MatchSetup) {
   busy.value = true
   err.value = ''
   try {
-    await api.selectFeatureVisual(props.pageId, props.featureId, v.id)
-    await project.refreshFromServer()
+    project.applyServerSnapshot(
+      await api.selectFeatureVisual(props.pageId, props.featureId, v.id),
+    )
     emit('selected')
     emit('close')
   } catch (e) {
@@ -38,41 +39,55 @@ async function pick(v: MatchSetup) {
     busy.value = false
   }
 }
+
+function onKey(ev: KeyboardEvent) {
+  if (ev.key === 'Escape') emit('close')
+}
+
+onMounted(() => document.addEventListener('keydown', onKey))
+onUnmounted(() => document.removeEventListener('keydown', onKey))
 </script>
 
 <template>
-  <div class="mask" @click.self="emit('close')">
-    <div class="dialog sf-panel">
-      <header>
-        <h3><I18nText k="select_setup_title" /></h3>
-        <button type="button" class="sf-btn sf-btn-ghost" @click="emit('close')">×</button>
-      </header>
-      <p class="hint">
-        <I18nText k="select_setup_hint" :vars="{ name: featureLabel }" />
-      </p>
-      <p v-if="!visuals.length" class="empty"><I18nText k="empty_setups_pick" /></p>
-      <div v-else class="grid">
-        <button
-          v-for="v in visuals"
-          :key="v.id"
-          type="button"
-          class="tile"
-          :disabled="busy"
-          @click="pick(v)"
-        >
-          <img v-if="v.asset" :src="api.fileUrl(v.asset)" :alt="v.label" />
-          <span>{{ v.label || v.id }}</span>
-          <span class="sf-mono dim">{{ v.id }}</span>
-        </button>
-      </div>
-      <p v-if="err" class="err">{{ err }}</p>
-      <div class="sf-dialog-foot">
-        <button type="button" class="sf-btn" :disabled="busy" @click="emit('close')">
-          <I18nText k="cancel" />
-        </button>
+  <Teleport to="body">
+    <div class="mask" @click.self="emit('close')">
+      <div
+        class="dialog sf-panel"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="featureLabel"
+      >
+        <header>
+          <h3><I18nText k="select_setup_title" /></h3>
+          <button type="button" class="sf-btn sf-btn-ghost" @click="emit('close')">×</button>
+        </header>
+        <p class="hint">
+          <I18nText k="select_setup_hint" :vars="{ name: featureLabel }" />
+        </p>
+        <p v-if="!visuals.length" class="empty"><I18nText k="empty_setups_pick" /></p>
+        <div v-else class="grid">
+          <button
+            v-for="v in visuals"
+            :key="v.id"
+            type="button"
+            class="tile"
+            :disabled="busy"
+            @click="pick(v)"
+          >
+            <img v-if="v.asset" :src="api.fileUrl(v.asset)" :alt="v.label" />
+            <span>{{ v.label || v.id }}</span>
+            <span class="sf-mono dim">{{ v.id }}</span>
+          </button>
+        </div>
+        <p v-if="err" class="err">{{ err }}</p>
+        <div class="sf-dialog-foot">
+          <button type="button" class="sf-btn" :disabled="busy" @click="emit('close')">
+            <I18nText k="cancel" />
+          </button>
+        </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <style scoped>

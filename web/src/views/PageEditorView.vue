@@ -2,17 +2,15 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 import { useUiStore } from '@/stores/ui'
-import { usePrefsStore } from '@/stores/prefs'
 import { useProjectStore } from '@/stores/project'
 import AssetGrid from '@/components/AssetGrid.vue'
 import MatchSetupPanel from '@/components/MatchSetupPanel.vue'
-import ArtworkLibrary from '@/components/ArtworkLibrary.vue'
+import ReferenceShotPanel from '@/components/ReferenceShotPanel.vue'
 import PostEditor from '@/components/PostEditor.vue'
 import SectionHelp from '@/components/SectionHelp.vue'
 
 const { t } = useI18n()
 const ui = useUiStore()
-const prefs = usePrefsStore()
 const project = useProjectStore()
 const selectedFeatureId = ref<string | null>(null)
 
@@ -35,7 +33,15 @@ function mark() {
 
 async function remove() {
   if (!page.value) return
-  if (!confirm(t('confirm_delete_page', { name: page.value.name }))) return
+  if (
+    !(await ui.askConfirm({
+      title: t('confirm_delete_page', { name: page.value.name }),
+      danger: true,
+      confirmLabel: t('delete'),
+    }))
+  ) {
+    return
+  }
   await project.removePage(page.value.id)
 }
 
@@ -53,37 +59,31 @@ function openCases() {
       <div class="titles">
         <label class="name-field">
           <span class="sf-label"><I18nText k="name" /></span>
-          <input v-model="page.name" class="sf-input name-input" @input="mark" />
+          <input v-model="page.name" class="name-input" @input="mark" />
         </label>
         <p class="sf-mono path">{{ page.id }}</p>
       </div>
       <div class="sf-btn-bar head-actions">
-        <button class="sf-btn" type="button" @click="openCases"><I18nText k="expand_cases" /></button>
-        <button class="sf-btn sf-btn-ghost danger" type="button" @click="remove"><I18nText k="delete" /></button>
+        <button class="sf-btn sf-btn-ghost head-btn" type="button" @click="openCases">
+          <I18nText k="expand_cases" />
+        </button>
+        <button class="sf-btn sf-btn-ghost danger" type="button" @click="remove">
+          <I18nText k="delete" />
+        </button>
       </div>
     </header>
 
-    <section class="block">
+    <section class="block sf-panel zone">
       <AssetGrid :page-id="page.id" @select="selectedFeatureId = $event" />
     </section>
 
     <section class="block">
-      <MatchSetupPanel :page-id="page.id" />
+      <ReferenceShotPanel :page-id="page.id" />
     </section>
 
-    <details
-      class="block artwork lib-fold"
-      :open="prefs.templateLibraryOpen"
-      @toggle="prefs.templateLibraryOpen = ($event.target as HTMLDetailsElement).open"
-    >
-      <summary>
-        <span class="sum-left">
-          <I18nText k="sec_page_artwork" />
-          <SectionHelp help-key="help_page_artwork" />
-        </span>
-      </summary>
-      <ArtworkLibrary :page-id="page.id" :embedded="true" />
-    </details>
+    <section class="block">
+      <MatchSetupPanel :page-id="page.id" :highlight-feature-id="selectedFeatureId" />
+    </section>
 
     <details class="adv">
       <summary>
@@ -113,15 +113,15 @@ function openCases() {
       </div>
     </details>
 
-    <details class="adv">
-      <summary>
-        <span class="sum-left">
-          <I18nText k="sec_page_default_post" />
-          <SectionHelp help-key="help_page_default_post" />
-        </span>
-      </summary>
-      <PostEditor v-if="page" v-model="page.default_post" :page-id="page.id" @change="mark" />
-    </details>
+    <section class="block">
+      <PostEditor
+        v-if="page"
+        v-model="page.default_post"
+        :page-id="page.id"
+        title-key="sec_page_default_post"
+        help-key="help_page_default_post"
+      />
+    </section>
   </div>
 </template>
 
@@ -146,31 +146,57 @@ function openCases() {
 .name-field {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.2rem;
+  max-width: 28rem;
 }
 .name-input {
-  font-size: var(--sf-fs-lg);
+  width: 100%;
+  margin: 0;
+  padding: 0.15rem 0 0.35rem;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  font-size: var(--sf-fs-xl);
   font-weight: 600;
+  line-height: 1.25;
+  color: var(--sf-ink);
+  transition: border-color 0.15s ease;
+}
+.name-input:hover {
+  border-bottom-color: var(--sf-line);
+}
+.name-input:focus {
+  outline: none;
+  border-bottom-color: var(--sf-accent);
+  box-shadow: none;
 }
 .path {
-  margin: 0.25rem 0 0;
+  margin: 0.2rem 0 0;
   color: var(--sf-ink-faint);
   font-size: var(--sf-fs-xs);
+}
+.head-actions {
+  align-self: center;
+}
+.head-btn {
+  color: var(--sf-ink-muted);
+}
+.head-btn:hover {
+  color: var(--sf-ink);
+  background: var(--sf-surface-2);
 }
 .block {
   padding: 0;
 }
-.lib-fold,
-.adv {
-  border: 1px solid var(--sf-line);
-  border-radius: var(--sf-radius);
-  padding: var(--sf-space-3) var(--sf-space-4);
-  background: var(--sf-surface);
+.zone {
+  padding: var(--sf-space-4);
 }
-.lib-fold summary,
+.adv {
+  padding: var(--sf-space-3) var(--sf-space-4);
+}
 .adv summary {
   cursor: pointer;
-  list-style: none;
   display: flex;
   align-items: center;
   justify-content: space-between;

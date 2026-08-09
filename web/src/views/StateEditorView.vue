@@ -31,7 +31,16 @@ watch(
   page,
   (p) => {
     if (!p) return
-    if (!selectedId.value || !findNodeInTree(p.state_tree || [], selectedId.value)) {
+    // Only auto-pick when landing with no selection; allow re-click clear.
+    if (!selectedId.value) {
+      if (ui.selection.nodeId && findNodeInTree(p.state_tree || [], ui.selection.nodeId)) {
+        selectedId.value = ui.selection.nodeId
+      } else if (!ui.selection.nodeId) {
+        selectedId.value = p.state_tree?.[0]?.id ?? null
+      }
+      return
+    }
+    if (!findNodeInTree(p.state_tree || [], selectedId.value)) {
       selectedId.value = p.state_tree?.[0]?.id ?? null
     }
   },
@@ -59,7 +68,10 @@ function onTreeUpdate(tree: NonNullable<typeof page.value>['state_tree']) {
 
 async function saveTemplate() {
   if (!page.value) return
-  const name = window.prompt(t('template_save'), `${page.value.id}_cases`)
+  const name = await ui.askPrompt({
+    title: t('template_save'),
+    initial: `${page.value.id}_cases`,
+  })
   if (!name) return
   await api.saveTemplate(name.trim(), page.value.state_tree || [])
   ui.showToast(t('saved'))
@@ -72,9 +84,20 @@ async function loadTemplate() {
     ui.showToast(t('template_empty'))
     return
   }
-  const name = window.prompt(`${t('template_load')}\n${templates.join(', ')}`, templates[0])
+  const name = await ui.askSelect({
+    title: t('template_load'),
+    options: templates.map((n) => ({ id: n, label: n })),
+  })
   if (!name) return
-  if (!confirm(t('template_replace', { name }))) return
+  if (
+    !(await ui.askConfirm({
+      title: t('template_replace', { name }),
+      danger: true,
+      confirmLabel: t('dialog_replace'),
+    }))
+  ) {
+    return
+  }
   const { tree } = await api.loadTemplate(name.trim())
   page.value.state_tree = tree
   selectedId.value = tree[0]?.id ?? null

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from '@/i18n'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const props = withDefaults(
   defineProps<{
@@ -8,8 +9,10 @@ const props = withDefaults(
     preferredName: string
     /** full = search area + match picture; content = artwork crop only */
     mode?: 'full' | 'content'
+    /** Hint tone: setup = creating a match setup; library = template file only */
+    context?: 'setup' | 'library'
   }>(),
-  { mode: 'full' },
+  { mode: 'full', context: 'setup' },
 )
 
 const emit = defineEmits<{
@@ -18,6 +21,10 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+useEscapeKey(() => {
+  emit('close')
+  return true
+})
 const contentOnly = computed(() => props.mode === 'content')
 const step = ref<1 | 2>(contentOnly.value ? 2 : 1)
 const name = ref(props.preferredName)
@@ -41,8 +48,14 @@ const title = computed(() => {
   return step.value === 1 ? t('upload_step_search_title') : t('upload_step_content_title')
 })
 const hint = computed(() => {
-  if (contentOnly.value) return t('upload_artwork_hint')
-  return step.value === 1 ? t('upload_step_search_hint') : t('upload_step_content_hint')
+  if (contentOnly.value) {
+    return props.context === 'setup' ? t('upload_setup_content_hint') : t('upload_artwork_hint')
+  }
+  return step.value === 1
+    ? t('upload_step_search_hint')
+    : props.context === 'setup'
+      ? t('upload_step_content_hint')
+      : t('upload_artwork_hint')
 })
 const zoomLabel = computed(() => `${Math.round(zoom.value * 100)}%`)
 
@@ -159,21 +172,15 @@ function onWheel(ev: WheelEvent) {
 function seedContentInsideSearch() {
   const r = searchRoi.value
   if (!r) {
+    // Full-screen search: keep a modest center crop (not the whole frame).
     x0.value = 0.3
     x1.value = 0.7
     y0.value = 0.3
     y1.value = 0.7
     return
   }
-  const [sy0, sy1, sx0, sx1] = r
-  const mx = (sx0 + sx1) / 2
-  const my = (sy0 + sy1) / 2
-  const hw = (sx1 - sx0) * 0.35
-  const hh = (sy1 - sy0) * 0.35
-  x0.value = Math.max(sx0, mx - hw)
-  x1.value = Math.min(sx1, mx + hw)
-  y0.value = Math.max(sy0, my - hh)
-  y1.value = Math.min(sy1, my + hh)
+  // Local search: default match content to the full search region.
+  ;[y0.value, y1.value, x0.value, x1.value] = r
 }
 
 function goSearchNext() {

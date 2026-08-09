@@ -163,8 +163,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "asset_features": "screen features",
         "asset_detail_title": "Selected picture",
         "asset_detail_empty": "Select a picture",
-        "val_feature_unbound": "Page “{page}”: feature “{feature}” ({where}) has no linked artwork.",
-        "val_feature_unbound_unused": "Page “{page}”: unused feature “{feature}” is not linked (artwork optional until used).",
+        "val_feature_unbound": "Page “{page}”: feature “{feature}” ({where}) has no match setup selected.",
+        "val_feature_unbound_unused": "Page “{page}”: unused feature “{feature}” has no match setup (optional until used).",
+        "val_feature_file_missing": "Page “{page}”: feature “{feature}” ({where}) match-setup template file is missing.",
+        "val_feature_file_missing_unused": "Page “{page}”: unused feature “{feature}” match-setup template file is missing.",
         "asset_detail_missing": "Image file missing",
         "asset_detail_name": "Name",
         "asset_detail_mode": "Search mode",
@@ -204,7 +206,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "step_down": "Down",
         "step_op": "Operation",
         "step_target": "Target",
-        "step_target_click": "Click picture",
+        "step_target_click": "Click feature",
         "step_target_key": "Key",
         "step_target_wait": "Wait (seconds)",
         "step_target_hold_key": "Key",
@@ -265,7 +267,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "val_title": "Cannot start",
         "val_warn_title": "Warnings",
         "val_no_pages": "Add at least one page first.",
-        "val_no_detect": "Page “{page}” has no page-recognition feature with linked artwork.",
+        "val_no_detect": "Page “{page}” has no page-recognition feature with a runnable match setup.",
         "val_no_actions": "Page “{page}” / case “{state}” has no actions.",
         "val_empty_tree": "(no cases)",
         "val_click_empty": "Page “{page}” / “{state}” step {step}: click target is empty.",
@@ -289,7 +291,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_else_hint": "Used when nothing else matches (always stays at the bottom)",
         "st_else_tag": " · Other",
         "st_score_kind": "Recognition method",
-        "st_score_key": "Image name",
+        "st_score_key": "Screen feature",
         "st_roi": "Search region (optional)",
         "st_constant": "Fixed similarity value",
         "st_actions": "Actions",
@@ -344,9 +346,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_col_detail": "Detail",
         "st_grp_basic": "This case",
         "st_grp_advanced": "More options (id / priority)",
-        "st_kind_template": "Match an image",
+        "st_kind_template": "Match feature",
         "st_kind_constant": "Fixed similarity (advanced)",
-        "st_kind_invert": "Match when image is absent",
+        "st_kind_invert": "Feature absent",
         "st_mode_once": "Observe once",
         "st_mode_until_page": "Until another page",
         "st_mode_until_case": "Until Other case (ELSE)",
@@ -418,9 +420,9 @@ _STRINGS: dict[str, dict[str, str]] = {
             "One case on this page: when it wins, its actions run.\n"
             "• Name — label shown in the case list.\n"
             "• Other case — used when no other case matches; always stays at the bottom.\n"
-            "• Recognition method — Match an image (compare a picture), Fixed similarity (advanced; use a constant score), or Match when image is absent.\n"
-            "• Image name — which feature picture to use.\n"
-            "• Search region (optional) — overrides the ROI set when the image was uploaded; leave empty to use the image’s ROI, or full-screen search if none.\n"
+            "• Recognition method — Match feature, Fixed similarity (advanced; use a constant score), or Feature absent.\n"
+            "• Screen feature — which feature to use (must have a match setup selected).\n"
+            "• Search region (optional) — overrides the feature’s match-setup search area; leave empty to use that area, or full-screen if none.\n"
             "• Fixed similarity value — only for Fixed similarity method.\n"
             "• Actions — ordered steps when this case is selected."
         ),
@@ -468,7 +470,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "help_steps": (
             "Ordered steps when this case (or macro) is chosen.\n"
             "• Operation — Click, Key, Wait, Hold key, Macro; Advanced: Set/Clear variable, Script.\n"
-            "• Click picture — image from this page’s click library to locate and click.\n"
+            "• Click feature — a screen feature to locate and click.\n"
             "• Key — keyboard key to press (or to hold for Hold key).\n"
             "• Wait (seconds) — pause duration.\n"
             "• Macro — run another reusable step list from the project.\n"
@@ -483,7 +485,7 @@ _STRINGS: dict[str, dict[str, str]] = {
             "• Create with “Add macro” under the tree.\n"
             "• Edit the name and steps in this editor.\n"
             "• From a page case action, choose operation Macro and select this macro.\n"
-            "Click targets can use click pictures from any page in the project."
+            "Click targets can use screen features from any page in the project."
         ),
         "help_pairs": (
             "Look-alike pages are screens that are easy to confuse when identifying the current page.\n"
@@ -650,8 +652,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "asset_features": "画面特征",
         "asset_detail_title": "当前选中",
         "asset_detail_empty": "请选择一张特征图",
-        "val_feature_unbound": "页面「{page}」：画面特征「{feature}」（{where}）尚未绑定贴图。",
-        "val_feature_unbound_unused": "页面「{page}」：未使用的画面特征「{feature}」尚未绑定贴图（使用前再绑定即可）。",
+        "val_feature_unbound": "页面「{page}」：画面特征「{feature}」（{where}）尚未选用匹配方案。",
+        "val_feature_unbound_unused": "页面「{page}」：未使用的画面特征「{feature}」尚未选用匹配方案（使用前再选用即可）。",
+        "val_feature_file_missing": "页面「{page}」：画面特征「{feature}」（{where}）匹配方案的模板文件缺失。",
+        "val_feature_file_missing_unused": "页面「{page}」：未使用的画面特征「{feature}」匹配方案的模板文件缺失。",
         "asset_detail_missing": "图片文件缺失",
         "asset_detail_name": "名称",
         "asset_detail_mode": "搜索方式",
@@ -689,7 +693,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "step_down": "下移",
         "step_op": "操作",
         "step_target": "目标",
-        "step_target_click": "点击图",
+        "step_target_click": "点击特征",
         "step_target_key": "按键",
         "step_target_wait": "等待（秒）",
         "step_target_hold_key": "按键",
@@ -750,7 +754,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "val_title": "无法开始",
         "val_warn_title": "警告",
         "val_no_pages": "请先添加至少一个页面。",
-        "val_no_detect": "页面「{page}」没有已绑定贴图的「用作本页识别」画面特征。",
+        "val_no_detect": "页面「{page}」没有已选用可运行匹配方案的「用作本页识别」画面特征。",
         "val_no_actions": "页面「{page}」/ 情况「{state}」没有动作。",
         "val_empty_tree": "（尚无情况）",
         "val_click_empty": "页面「{page}」/「{state}」第 {step} 步：点击目标为空。",
@@ -774,7 +778,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_else_hint": "其它都未命中时走这里（始终排在最下方）",
         "st_else_tag": " · 其它",
         "st_score_kind": "识别方式",
-        "st_score_key": "图片名称",
+        "st_score_key": "画面特征",
         "st_roi": "限定搜索区域（可选）",
         "st_constant": "固定相似度",
         "st_actions": "动作",
@@ -829,9 +833,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "st_col_detail": "说明",
         "st_grp_basic": "当前情况",
         "st_grp_advanced": "更多选项（编号 / 优先级）",
-        "st_kind_template": "匹配图片",
+        "st_kind_template": "匹配特征",
         "st_kind_constant": "固定相似度（高级）",
-        "st_kind_invert": "图片未出现时匹配",
+        "st_kind_invert": "特征未出现",
         "st_mode_once": "只观察一次",
         "st_mode_until_page": "直到命中其他页面",
         "st_mode_until_case": "直到命中其它情况（ELSE）",
@@ -900,9 +904,9 @@ _STRINGS: dict[str, dict[str, str]] = {
             "本页上的一种情况：命中后执行其动作。\n"
             "• 名称 — 情况列表中显示的名称。\n"
             "• 其它情况 — 其它情况都未命中时使用；始终排在最下方。\n"
-            "• 识别方式 — 匹配图片（用图片比对）、固定相似度（高级；使用恒定分数）、或图片未出现时匹配。\n"
-            "• 图片名称 — 使用哪张特征图。\n"
-            "• 限定搜索区域（可选） — 覆盖上传时为图片设置的 ROI；留空则用图片自带 ROI，都没有则全屏搜索。\n"
+            "• 识别方式 — 匹配特征、固定相似度（高级；使用恒定分数）、或特征未出现。\n"
+            "• 画面特征 — 用哪个特征（须已选用匹配方案）。\n"
+            "• 限定搜索区域（可选） — 覆盖该特征匹配方案的搜索区域；留空则用方案自带区域，都没有则全屏搜索。\n"
             "• 固定相似度 — 仅在识别方式为「固定相似度」时使用。\n"
             "• 动作 — 选中本情况后按顺序执行的步骤。"
         ),
@@ -949,7 +953,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "help_steps": (
             "选中情况（或宏）后按顺序执行的步骤。\n"
             "• 操作 — 点击、按键、等待、按住按键、宏；高级：设置/清除变量、脚本。\n"
-            "• 点击图 — 本页点击图库中的图片，用于定位并点击。\n"
+            "• 点击特征 — 本页画面特征，用于定位并点击。\n"
             "• 按键 — 要按下的键（「按住按键」时为按住的键）。\n"
             "• 等待（秒） — 暂停时长。\n"
             "• 宏 — 调用项目中可复用的步骤序列。\n"
@@ -964,7 +968,7 @@ _STRINGS: dict[str, dict[str, str]] = {
             "• 用树下方「添加宏」新建。\n"
             "• 在此编辑名称与步骤。\n"
             "• 在页面情况的动作中选操作「宏」并选择本宏即可调用。\n"
-            "点击目标可使用项目中任意页面的点击图。"
+            "点击目标可使用项目中任意页面的画面特征。"
         ),
         "help_pairs": (
             "易混淆页面指识别当前界面时容易认错的两个页面。\n"

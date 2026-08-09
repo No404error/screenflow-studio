@@ -53,6 +53,13 @@ export interface PageAsset {
   relpath: string
 }
 
+/** Page original screenshot (Studio material). */
+export interface PageOriginal {
+  id: string
+  label: string
+  path: string
+}
+
 /**
  * Match setup (Visual): search area + template.
  * Lives on the page; features select via visual_id.
@@ -62,15 +69,12 @@ export interface MatchSetup {
   label: string
   asset: string
   template?: string
+  source_id?: string | null
   search_roi?: number[] | null
   content_roi?: number[] | null
   complete?: boolean
+  file_missing?: boolean
 }
-
-/** @deprecated Use MatchSetup */
-export type FeatureVisual = MatchSetup
-/** @deprecated Use MatchSetup */
-export type FeatureLink = MatchSetup
 
 export interface FeatureDef {
   id: string
@@ -92,8 +96,8 @@ export interface PageDoc {
   detect_priority?: number
   pair_with?: string | null
   recognize_with?: string | null
-  /** Full-window canvas for match-setup editing (not used at runtime). */
-  source?: string | null
+  /** Page originals (full-window screenshots for Studio editing). */
+  sources?: Record<string, PageOriginal>
   features?: Record<string, FeatureDef>
   /** Page-level match setups. */
   visuals?: Record<string, MatchSetup>
@@ -102,6 +106,7 @@ export interface PageDoc {
   state_tree: StateNode[]
   decide_params?: DecideParams
   default_post?: PostListen | null
+  /** Derived template crops on disk (not a user-facing library). */
   assets?: PageAsset[]
 }
 

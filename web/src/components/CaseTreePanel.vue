@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from '@/i18n'
+import { useUiStore } from '@/stores/ui'
 import {
   addChild,
   addSibling,
@@ -29,6 +30,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const ui = useUiStore()
 const allowNested = computed(() => props.allowNested !== false)
 
 const rows = computed(() => flattenTree(props.modelValue || []))
@@ -45,6 +47,10 @@ function touch(next: StateNode[]) {
 }
 
 function select(id: string) {
+  if (props.selectedId === id) {
+    emit('update:selectedId', null)
+    return
+  }
   emit('update:selectedId', id)
 }
 
@@ -58,7 +64,7 @@ function onAddCase() {
   select(n.id)
 }
 
-function onAddElse() {
+async function onAddElse() {
   const next = [...roots()]
   // ELSE only among root siblings of selected node's list, or roots
   let siblings = next
@@ -67,7 +73,7 @@ function onAddElse() {
     if (loc) siblings = loc.siblings
   }
   if (hasElseAmong(siblings)) {
-    alert(t('else_exists'))
+    await ui.askAlert({ title: t('dialog_notice'), message: t('else_exists') })
     return
   }
   const n = makeCase(t('else'), { isElse: true })
@@ -76,12 +82,12 @@ function onAddElse() {
   select(n.id)
 }
 
-function onAddChild() {
+async function onAddChild() {
   if (!props.selectedId || !allowNested.value) return
   const n = makeCase(t('default_child_name'), { featureKey: props.featureKeyHint })
   const next = [...roots()]
   if (!addChild(next, props.selectedId, n)) {
-    alert(t('cannot_nest_else'))
+    await ui.askAlert({ title: t('dialog_notice'), message: t('cannot_nest_else') })
     return
   }
   touch(next)

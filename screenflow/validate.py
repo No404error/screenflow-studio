@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from screenflow.assets import feature_link_ok
+from screenflow.assets import feature_link_ok, feature_setup_problem
 from screenflow.models import (
     ActionStep,
     PostListen,
@@ -163,18 +163,25 @@ def _check_score_features(
                     ),
                 )
             )
-        elif not feature_link_ok(project, page, key):
-            issues.append(
-                Issue(
-                    "error",
-                    t(
-                        "val_feature_unbound",
-                        page=page.display_name(),
-                        feature=page.features[key].display_name(),
-                        where=path,
-                    ),
+        else:
+            problem = feature_setup_problem(project, page, key)
+            if problem:
+                key_name = (
+                    "val_feature_file_missing"
+                    if problem == "file_missing"
+                    else "val_feature_unbound"
                 )
-            )
+                issues.append(
+                    Issue(
+                        "error",
+                        t(
+                            key_name,
+                            page=page.display_name(),
+                            feature=page.features[key].display_name(),
+                            where=path,
+                        ),
+                    )
+                )
     return issues
 
 
@@ -266,18 +273,25 @@ def _walk_steps_refs(
                         ),
                     )
                 )
-            elif page is not None and not feature_link_ok(project, page, target):
-                issues.append(
-                    Issue(
-                        "error",
-                        t(
-                            "val_feature_unbound",
-                            page=page_name,
-                            feature=page.features[target].display_name(),
-                            where=f"{state}/step {i}",
-                        ),
+            elif page is not None:
+                problem = feature_setup_problem(project, page, target)
+                if problem:
+                    key_name = (
+                        "val_feature_file_missing"
+                        if problem == "file_missing"
+                        else "val_feature_unbound"
                     )
-                )
+                    issues.append(
+                        Issue(
+                            "error",
+                            t(
+                                key_name,
+                                page=page_name,
+                                feature=page.features[target].display_name(),
+                                where=f"{state}/step {i}",
+                            ),
+                        )
+                    )
         elif step.op == "macro":
             mid = str(step.target or "").strip()
             if mid and mid not in project.macros:
@@ -375,12 +389,18 @@ def validate_for_start(project: Project, t) -> list[Issue]:
         for fid, feat in page.features.items():
             if fid in refs:
                 continue
-            if not feature_link_ok(project, page, fid):
+            problem = feature_setup_problem(project, page, fid)
+            if problem:
+                key_name = (
+                    "val_feature_file_missing_unused"
+                    if problem == "file_missing"
+                    else "val_feature_unbound_unused"
+                )
                 issues.append(
                     Issue(
                         "warning",
                         t(
-                            "val_feature_unbound_unused",
+                            key_name,
                             page=name,
                             feature=feat.display_name(),
                         ),
@@ -460,20 +480,31 @@ def validate_for_start(project: Project, t) -> list[Issue]:
             target = str(step.target or "").strip()
             if not target:
                 continue
-            for page in project.pages.values():
-                if target not in page.features:
-                    continue
-                if not feature_link_ok(project, page, target):
-                    issues.append(
-                        Issue(
-                            "error",
-                            t(
-                                "val_feature_unbound",
-                                page=page.display_name(),
-                                feature=page.features[target].display_name(),
-                                where=f"macro/{mid}",
-                            ),
-                        )
-                    )
+            pages_with = [
+                page for page in project.pages.values() if target in page.features
+            ]
+            if not pages_with:
+                continue
+            if any(feature_link_ok(project, page, target) for page in pages_with):
+                continue
+            # Present on some page(s) but none have a runnable match setup
+            page0 = pages_with[0]
+            problem = feature_setup_problem(project, page0, target)
+            key_name = (
+                "val_feature_file_missing"
+                if problem == "file_missing"
+                else "val_feature_unbound"
+            )
+            issues.append(
+                Issue(
+                    "error",
+                    t(
+                        key_name,
+                        page=page0.display_name(),
+                        feature=page0.features[target].display_name(),
+                        where=f"macro/{mid}",
+                    ),
+                )
+            )
 
     return issues

@@ -8,8 +8,11 @@ const project = useProjectStore()
 const ui = useUiStore()
 
 async function add() {
-  const name = window.prompt(t('add_macro'), t('default_macro_name'))
-  if (name) await project.addMacro(name)
+  const name = await ui.askPrompt({
+    title: t('add_macro'),
+    initial: t('default_macro_name'),
+  })
+  if (name) await project.addMacro(name.trim())
 }
 </script>
 

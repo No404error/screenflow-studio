@@ -39,31 +39,35 @@ export const helpEn: Record<string, string> = {
     'A case can still override this by enabling its own Follow-up in Case details.',
   help_page_images:
     'Screen features — logical names; matching is edited separately after select.\n' +
-    'Matching = search area + match picture; template library files are reusable pixels only.\n' +
-    'From a full-window screenshot: set search area, then crop the match picture.\n' +
+    'Matching = search area + match picture on a page original.\n' +
+    'From an original: set search area, then crop the match picture.\n' +
     'Mark one feature as “Use for page” for page recognition.',
   help_page_source:
-    'Reference canvas is updated when you create a match setup from a full screenshot.\n' +
-    'It is edited inside Match setups, not as a separate page section. Not used at runtime.',
+    'Originals — full-window screenshots for this page (Studio material).\n' +
+    'Upload or delete here. Match setups pick one original and crop from it.\n' +
+    'Deleting an original removes setups that use it. Not used at runtime.',
+  help_page_originals:
+    'Originals — full-window screenshots for this page (Studio material).\n' +
+    'Upload or delete here. Before upload you can box out private areas (solid fill).\n' +
+    'Match setups pick one original and crop from it.\n' +
+    'Deleting an original removes setups that use it. Not used at runtime.',
   help_page_features:
     'Screen features — logical names for recognition, case scoring, and clicks.\n' +
     'Here you only Use / Clear a match setup. Create and edit setups in Match setups.\n' +
     'Start is blocked if a used feature has no setup selected.',
   help_page_setups:
     'Match setups — ready “where to look + what to compare” packages.\n' +
-    'New from screenshot: upload a full window, set search area, crop match picture.\n' +
-    'Or create from a library template (full-screen search). Features then Use a setup.\n' +
+    'New from original: pick (or upload) a page original, set search area, crop match picture.\n' +
     'Setups can be idle or shared by multiple features.',
   help_page_artwork:
-    'Template library — reusable match-picture files only (no search area).\n' +
-    'Upload here without creating features or setups. Used when creating a match setup.\n' +
-    'Deleting a template removes setups that used it and clears feature selection.',
+    'Derived match-picture files under the page features folder (implementation detail).\n' +
+    'Created when you crop a match setup from an original. Not a main page section.',
   help_case_basic:
     'Details for the selected case: when it wins, its actions run.\n' +
     '• Name — label shown in the case list.\n' +
     '• Default case — used when nothing else matches; always stays at the bottom.\n' +
-    '• How to recognize — Match an image, Fixed score (advanced), or Match when image is absent.\n' +
-    '• Screen feature — which feature to match (must have matching set for Start).\n' +
+    '• How to recognize — Match feature, Fixed score (advanced), or Feature absent.\n' +
+    '• Screen feature — which feature to use (must have a match setup selected for Start).\n' +
     '• Search region (optional) — overrides the feature’s matching search area; leave empty to use that area, or full-screen if none.\n' +
     '• Actions — ordered steps when this case is selected (drag ⋮⋮ to reorder).\n' +
     'Drag ⋮⋮ on the case list to reorder (Default case stays last).',
@@ -82,13 +86,7 @@ export const helpEn: Record<string, string> = {
     'Optional filter before this case can win.\n' +
     '• Left — variable name (from Set variable steps).\n' +
     '• Right — required value; leave empty to mean “variable is set / true”.\n' +
-    'If the condition fails, this case is skipped even if its picture matches.',
-  help_case_advanced:
-    'Usually leave alone unless you use sub-cases or need a stable file id.\n' +
-    '• Internal ID — stable key in project files (renaming the case label does not change this).\n' +
-    '• Nested match params — apply only when this case has sub-cases and those sub-cases are being scored.\n' +
-    '  See the “?” next to Nested match params for each field.\n' +
-    '• Priority — set on the case itself (not in this panel); when scores are close, higher wins (drag the list to reorder).',
+    'If the condition fails, this case is skipped even if its feature matches.',
   help_case_layer:
     'These values apply only after this case wins, when choosing among its sub-cases. ' +
     'They do not change how this case competes with other cases at the same level.\n' +
@@ -107,7 +105,7 @@ export const helpEn: Record<string, string> = {
   help_steps:
     'Ordered steps when this case (or macro) is chosen.\n' +
     '• Operation — Click, Key, Wait, Hold key, Macro; Advanced: Set/Clear variable, Script.\n' +
-    '• Click picture — a feature picture from this page to locate and click.\n' +
+    '• Click feature — a screen feature from this page to locate and click.\n' +
     '• Key / Hold — keyboard key (and hold duration for Hold key).\n' +
     '• Wait (seconds) — pause duration.\n' +
     '• Macro — run another reusable step list.\n' +
@@ -120,7 +118,7 @@ export const helpEn: Record<string, string> = {
     '• Create with “Add macro”.\n' +
     '• Edit the name and steps here.\n' +
     '• From a case action, choose Macro and select this macro.\n' +
-    'Click targets can use feature pictures from any page in the project.',
+    'Click targets can use screen features from any page in the project.',
   help_pairs:
     'Look-alike pages are screens that are easy to confuse when identifying the current page.\n' +
     '• Page A / Page B — the two pages in the pair.\n' +
@@ -136,7 +134,7 @@ export const helpEn: Record<string, string> = {
     '2) In a case’s Actions, use Set variable / Clear variable when something important happens.\n' +
     '3) On another case, turn on “Only when variable condition holds” so it only runs in the right situation.\n' +
     '\n' +
-    'You can skip this page entirely if every decision can be made from pictures alone.\n' +
+    'You can skip this page entirely if every decision can be made from screen features alone.\n' +
     '\n' +
     'On this table:\n' +
     '• Name — the label you pick in Set/Clear steps and case conditions.\n' +
@@ -148,11 +146,11 @@ export const helpEn: Record<string, string> = {
   sec_runtime: 'Run defaults',
   sec_runtime_advanced: 'More options',
   sec_page_match: 'Matching (usually leave alone)',
-  sec_page_images: 'Screen features',
   sec_page_features: 'Screen features',
   sec_page_setups: 'Match setups',
-  sec_page_artwork: 'Template library',
-  sec_page_source: 'Reference shot',
+  sec_page_artwork: 'Template files',
+  sec_page_source: 'Originals',
+  sec_page_originals: 'Originals',
   sec_page_default_post: 'Page default follow-up',
   sec_case_basic: 'Case details',
   sec_case_post: 'Follow-up',
@@ -161,11 +159,10 @@ export const helpEn: Record<string, string> = {
   sec_macros: 'Macro',
   sec_pairs: 'Look-alike pages',
   sec_vars: 'Project variables',
-  sec_detect: 'Page recognition',
   sec_pages: 'Pages',
   help_pages:
     'Pages are recognizable screens in your project.\n' +
-    '• Each page has feature pictures, a recognition image, and cases with actions.\n' +
+    '• Each page has screen features, match setups, and cases with actions.\n' +
     '• Open a page from this list or from the sidebar.\n' +
     '• Look-alike pairs disambiguate screens that are easy to confuse.',
 }
@@ -208,31 +205,35 @@ export const helpZh: Record<string, string> = {
     '情况详情里仍可为单个情况单独开启「后续观察」，优先于本页默认。',
   help_page_images:
     '画面特征 — 逻辑名；选中后再单独编辑匹配方式。\n' +
-    '匹配方式 = 搜索区域 + 匹配内容；模板库只有可复用像素文件。\n' +
-    '从整窗截图：先定搜索区域，再裁切匹配内容。\n' +
+    '匹配方式 = 在页原图上设置搜索区域 + 匹配内容。\n' +
+    '从原图：先定搜索区域，再裁切匹配内容。\n' +
     '将其中一个特征设为「用作识别」。',
   help_page_source:
-    '参考画布在「匹配方案」从整窗截图新建时自动更新。\n' +
-    '不在页面上单独成区；不参与运行。',
+    '原图 — 本页整窗截图，供 Studio 编辑对照。\n' +
+    '在此上传或删除；匹配方案选用一张原图并在其上裁切。\n' +
+    '删除原图会级联删除依赖它的方案。不参与运行。',
+  help_page_originals:
+    '原图 — 本页整窗截图，供 Studio 编辑对照。\n' +
+    '在此上传或删除；上传前可框选遮挡隐私区域（实色填充）。\n' +
+    '匹配方案选用一张原图并在其上裁切。\n' +
+    '删除原图会级联删除依赖它的方案。不参与运行。',
   help_page_features:
     '画面特征 — 逻辑名，用于本页识别、情况打分与点击。\n' +
     '此处只「选用 / 取消选用」匹配方案；方案在「匹配方案」区创建与编辑。\n' +
     '流程用到的特征若未选用完备方案，将无法开始。',
   help_page_setups:
     '匹配方案 — 已编好的「在哪找 + 找什么」。\n' +
-    '从截图新建：上传整窗 → 定搜索区域 → 裁匹配内容。\n' +
-    '或从模板库新建（默认全屏搜索）。然后在画面特征上选用。\n' +
+    '从原图新建：选用（或上传）页原图 → 定搜索区域 → 裁匹配内容。\n' +
     '方案可闲置，也可被多个特征共用。',
   help_page_artwork:
-    '模板库 — 仅可复用的匹配内容文件（不含搜索区域）。\n' +
-    '在此上传不会创建特征或方案；编匹配方案时可选用。\n' +
-    '删除模板会删除依赖它的方案，并取消相关特征的选用。',
+    '派生匹配小图（页面 features/ 下的实现细节）。\n' +
+    '从原图裁切匹配方案时自动生成，不是页面主区。',
   help_case_basic:
     '当前选中情况的详情：命中后执行其动作。\n' +
     '• 名称 — 情况列表中显示的名称。\n' +
     '• 默认情况 — 其余都未命中时使用；始终排在最下方。\n' +
-    '• 识别方式 — 匹配图片、固定相似度（高级），或图片未出现时匹配。\n' +
-    '• 画面特征 — 用哪个特征来匹配（开始前须已设置匹配内容）。\n' +
+    '• 识别方式 — 匹配特征、固定相似度（高级），或特征未出现。\n' +
+    '• 画面特征 — 用哪个特征（开始前须已选用匹配方案）。\n' +
     '• 限定搜索区域（可选） — 覆盖特征默认搜索区域；留空则用特征自带区域，都没有则全屏搜索。\n' +
     '• 动作 — 选中该情况后按顺序执行的步骤（拖 ⋮⋮ 调整顺序）。\n' +
     '在情况列表拖 ⋮⋮ 可调整顺序（「默认情况」始终在最下）。',
@@ -248,15 +249,9 @@ export const helpZh: Record<string, string> = {
     '• 无法识别页面时结束 — 认不出当前页面时结束本次后续观察；关闭则跳过并继续。\n' +
     '• 编辑后续情况 — 配置后续观察阶段要识别的各种界面与动作。',
   help_case_when:
-    '可选条件：不满足则本情况不会被选中（即使图片匹配）。\n' +
+    '可选条件：不满足则本情况不会被选中（即使特征已匹配）。\n' +
     '• 左侧 — 变量名（由「设置变量」步骤写入）。\n' +
     '• 右侧 — 要求的取值；留空表示「变量已设置 / 为真」即可。',
-  help_case_advanced:
-    '多数项目通常无需修改；只有使用子情况或要固定文件编号时才用。\n' +
-    '• 内部编号 — 项目文件中的稳定键（改显示名称不会自动改这里）。\n' +
-    '• 下级匹配参数 — 仅当本情况带有子情况、正在从中挑选时生效。\n' +
-    '  各字段含义见「下级匹配参数」旁的「？」。\n' +
-    '• 优先级 — 在情况本身上设置（不在本面板）；分数接近时数字大的优先（可拖列表调整顺序）。',
   help_case_layer:
     '这些参数只影响「本情况已经选中之后，在其子情况之间」如何挑选；' +
     '不会改变本情况与其它同级情况的竞争。\n' +
@@ -275,7 +270,7 @@ export const helpZh: Record<string, string> = {
   help_steps:
     '选中情况（或宏）后按顺序执行的步骤。\n' +
     '• 操作 — 点击、按键、等待、按住按键、宏；高级：设置/清除变量、脚本。\n' +
-    '• 点击图 — 本页特征图，用于定位并点击。\n' +
+    '• 点击特征 — 本页画面特征，用于定位并点击。\n' +
     '• 按键 / 按住 — 要按下的键（及按住时长）。\n' +
     '• 等待（秒） — 暂停时长。\n' +
     '• 宏 — 调用项目中可复用的步骤序列。\n' +
@@ -288,7 +283,7 @@ export const helpZh: Record<string, string> = {
     '• 用「添加宏」新建。\n' +
     '• 在此编辑名称与步骤。\n' +
     '• 在情况动作中选「宏」并选择本宏即可调用。\n' +
-    '点击目标可使用项目中任意页面的特征图。',
+    '点击目标可使用项目中任意页面的画面特征。',
   help_pairs:
     '易混淆页面指识别当前界面时容易认错的两个页面。\n' +
     '• 页面 A / 页面 B — 配对的两个页面。\n' +
@@ -304,7 +299,7 @@ export const helpZh: Record<string, string> = {
     '2）在某个情况的动作里，用「设置变量 / 清除变量」记下重要变化。\n' +
     '3）在另一个情况里打开「仅当变量条件满足」，让它只在对的时机才执行。\n' +
     '\n' +
-    '如果每一步都能单靠图片认出来，可以完全不用本页。\n' +
+    '如果每一步都能单靠画面特征认出来，可以完全不用本页。\n' +
     '\n' +
     '表格里各列：\n' +
     '• 名称 — 在设置/清除步骤和情况条件里选用的名字。\n' +
@@ -316,11 +311,11 @@ export const helpZh: Record<string, string> = {
   sec_runtime: '运行默认',
   sec_runtime_advanced: '更多选项',
   sec_page_match: '匹配参数（通常无需修改）',
-  sec_page_images: '画面特征',
   sec_page_features: '画面特征',
   sec_page_setups: '匹配方案',
-  sec_page_artwork: '模板库',
-  sec_page_source: '参考截图',
+  sec_page_artwork: '模板文件',
+  sec_page_source: '原图',
+  sec_page_originals: '原图',
   sec_page_default_post: '本页默认后续观察',
   sec_case_basic: '情况详情',
   sec_case_post: '后续观察',
@@ -329,11 +324,10 @@ export const helpZh: Record<string, string> = {
   sec_macros: '宏',
   sec_pairs: '易混淆页面',
   sec_vars: '项目变量',
-  sec_detect: '本页识别',
   sec_pages: '页面',
   help_pages:
     '页面是项目中可识别的界面。\n' +
-    '• 每个页面包含特征图、识别图，以及带动作的情况。\n' +
+    '• 每个页面包含画面特征、匹配方案，以及带动作的情况。\n' +
     '• 可从此列表或左侧栏打开某一页。\n' +
     '• 「易混淆页面」配对用于区分容易认错的两个界面。',
 }

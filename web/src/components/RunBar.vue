@@ -60,7 +60,13 @@ async function onStart() {
       <button v-if="run.isRunning" class="sf-btn" @click="run.pause()"><I18nText k="pause" /></button>
       <button v-if="run.isPaused" class="sf-btn" @click="run.resume()"><I18nText k="resume" /></button>
       <button v-if="run.isActive" class="sf-btn sf-btn-ghost danger" @click="run.stop()"><I18nText k="stop" /></button>
-      <button class="sf-btn sf-btn-ghost" @click="prefs.toggleDrawer()">▾</button>
+      <button
+        class="sf-btn sf-btn-ghost"
+        :title="prefs.drawerOpen ? t('collapse_drawer') : t('expand_drawer')"
+        @click="prefs.toggleDrawer()"
+      >
+        {{ prefs.drawerOpen ? '▴' : '▾' }}
+      </button>
     </div>
   </footer>
 </template>

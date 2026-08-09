@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import cv2
 import mss
 import numpy as np
@@ -33,6 +35,8 @@ class ScreenMatcher:
         self._load()
 
     def _load(self) -> None:
+        # Bare feature ids get a ROI only when unique across pages (same rule as feature_files).
+        bare_rois: dict[str, list[tuple[float, float, float, float]]] = {}
         for page_id, page in self.project.pages.items():
             detect_rel = page.recognize_asset()
             if detect_rel:
@@ -47,7 +51,11 @@ class ScreenMatcher:
                 if nroi is None:
                     continue
                 self.feature_rois[scoped_asset_key(page_id, fid)] = nroi
-                self.feature_rois.setdefault(fid, nroi)
+                bare_rois.setdefault(fid, []).append(nroi)
+
+        for fid, rois in bare_rois.items():
+            if len(rois) == 1:
+                self.feature_rois[fid] = rois[0]
 
         for key, rel in self.project.feature_files.items():
             path = resolve_asset_path(self.project, rel)

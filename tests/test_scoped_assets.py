@@ -109,3 +109,39 @@ def test_score_prefers_scoped_over_foreign_bare(tmp_path):
     conf = score_node(node, np.zeros((64, 64, 3), dtype=np.uint8), matcher, "a")
     # Match against zeros template on zeros screen should be high, and found.
     assert conf > 0.5
+
+
+def test_matcher_skips_conflicting_bare_rois(tmp_path):
+    from screenflow.matcher import ScreenMatcher
+
+    _img(tmp_path / "pages" / "a" / "features" / "main.png")
+    _img(tmp_path / "pages" / "a" / "features" / "btn.png")
+    _img(tmp_path / "pages" / "b" / "features" / "main.png")
+    _img(tmp_path / "pages" / "b" / "features" / "btn.png")
+    project = Project(
+        name="t",
+        root=tmp_path,
+        runtime=RuntimeConfig(),
+        pages={
+            "a": make_page(
+                "a",
+                detect="pages/a/features/main.png",
+                features={"btn": "pages/a/features/btn.png"},
+                feature_rois={"btn": [0.0, 0.2, 0.0, 0.2]},
+            ),
+            "b": make_page(
+                "b",
+                detect="pages/b/features/main.png",
+                features={"btn": "pages/b/features/btn.png"},
+                feature_rois={"btn": [0.8, 1.0, 0.8, 1.0]},
+            ),
+        },
+        feature_files={},
+    )
+    rebuild_resource_index(project)
+    matcher = ScreenMatcher(project)
+    assert "a/btn" in matcher.feature_rois
+    assert "b/btn" in matcher.feature_rois
+    assert "btn" not in matcher.feature_rois
+    assert matcher.feature_rois["a/btn"][0] == 0.0
+    assert matcher.feature_rois["b/btn"][0] == 0.8

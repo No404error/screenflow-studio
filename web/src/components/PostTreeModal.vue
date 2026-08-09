@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from '@/i18n'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 import CaseTreePanel from '@/components/CaseTreePanel.vue'
 import CaseDetailForm from '@/components/CaseDetailForm.vue'
 import { findNodeInTree } from '@/utils/tree'
@@ -19,18 +20,13 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const tree = ref<StateNode[]>([...(props.modelValue || [])])
-const selectedId = ref<string | null>(tree.value[0]?.id ?? null)
 
-watch(
-  () => props.modelValue,
-  (v) => {
-    tree.value = [...(v || [])]
-    if (selectedId.value && !findNodeInTree(tree.value, selectedId.value)) {
-      selectedId.value = tree.value[0]?.id ?? null
-    }
-  },
-)
+function cloneTree(nodes: StateNode[]): StateNode[] {
+  return JSON.parse(JSON.stringify(nodes || [])) as StateNode[]
+}
+
+const tree = ref<StateNode[]>(cloneTree(props.modelValue))
+const selectedId = ref<string | null>(tree.value[0]?.id ?? null)
 
 const node = computed(() =>
   selectedId.value ? findNodeInTree(tree.value, selectedId.value) : null,
@@ -38,22 +34,38 @@ const node = computed(() =>
 
 function onTreeUpdate(v: StateNode[]) {
   tree.value = v
-  emit('update:modelValue', v)
+  if (selectedId.value && !findNodeInTree(tree.value, selectedId.value)) {
+    selectedId.value = tree.value[0]?.id ?? null
+  }
 }
 
 function done() {
   emit('update:modelValue', tree.value)
   emit('close')
 }
+
+function cancel() {
+  emit('close')
+}
+
+useEscapeKey(() => {
+  cancel()
+  return true
+})
 </script>
 
 <template>
   <Teleport to="body">
-    <div class="mask" @click.self="done">
+    <div class="mask" @click.self="cancel">
       <div class="dialog">
         <header>
           <h3>{{ title || t('edit_post_tree') }}</h3>
-          <button type="button" class="sf-btn sf-btn-primary" @click="done">{{ t('ok') }}</button>
+          <div class="sf-btn-bar">
+            <button type="button" class="sf-btn sf-btn-ghost" @click="cancel">
+              {{ t('cancel') }}
+            </button>
+            <button type="button" class="sf-btn sf-btn-primary" @click="done">{{ t('ok') }}</button>
+          </div>
         </header>
         <div class="body">
           <CaseTreePanel
@@ -71,7 +83,6 @@ function done() {
             :macro-ids="macroIds"
             :page-id="pageId"
             :allow-post="false"
-            @change="emit('update:modelValue', tree)"
           />
           <p v-else class="sf-empty">{{ t('no_selection') }}</p>
         </div>

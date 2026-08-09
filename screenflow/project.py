@@ -8,6 +8,7 @@ from typing import Any, Iterable
 
 from screenflow.assets import (
     ensure_page_asset_dirs,
+    migrate_legacy_source_files,
     page_dir,
     page_json_path,
     scoped_asset_key,
@@ -24,6 +25,7 @@ from screenflow.models import (
     Project,
     RuntimeConfig,
     ScoreSpec,
+    SourceDef,
     StateNode,
     VisualDef,
     DEFAULT_STATE,
@@ -446,12 +448,14 @@ def _runtime_from_json(rt_raw: dict[str, Any]) -> RuntimeConfig:
     )
 
 
-def _visual_body_from_json(raw: Any) -> tuple[str, list[float] | None, list[float] | None] | None:
+def _visual_body_from_json(
+    raw: Any, *, allow_empty_asset: bool = False
+) -> tuple[str, list[float] | None, list[float] | None] | None:
     """Parse template + rois from a visual/link dict. Returns (asset, search, content)."""
     if not isinstance(raw, dict):
         return None
     asset = str(raw.get("template") or raw.get("asset") or "").replace("\\", "/").strip()
-    if not asset:
+    if not asset and not allow_empty_asset:
         return None
     return asset, _roi_from_json(raw.get("search_roi")), _roi_from_json(raw.get("content_roi"))
 
@@ -470,6 +474,37 @@ def _feature_link_from_json(raw: Any) -> VisualDef | None:
     )
 
 
+def _sources_from_page_json(raw: dict[str, Any]) -> dict[str, SourceDef]:
+    """Parse sources map (legacy single ``source`` promoted to s_legacy)."""
+    sources: dict[str, SourceDef] = {}
+    raw_src = raw.get("sources") or {}
+    if isinstance(raw_src, dict):
+        for k, v in raw_src.items():
+            sid = str(k)
+            if isinstance(v, str):
+                path = v.replace("\\", "/").strip()
+                if path:
+                    sources[sid] = SourceDef(id=sid, label=sid, path=path)
+                continue
+            if not isinstance(v, dict):
+                continue
+            path = str(v.get("path") or v.get("asset") or "").replace("\\", "/").strip()
+            if not path:
+                continue
+            id_ = str(v.get("id") or sid)
+            sources[id_] = SourceDef(
+                id=id_,
+                label=str(v.get("label") or id_),
+                path=path,
+            )
+    # Legacy single source → one SourceDef (file migrate happens with project root)
+    if not sources:
+        legacy = str(raw.get("source") or "").replace("\\", "/").strip()
+        if legacy:
+            sources["s_legacy"] = SourceDef(id="s_legacy", label="s_legacy", path=legacy)
+    return sources
+
+
 def _visuals_from_page_json(raw: dict[str, Any]) -> dict[str, VisualDef]:
     visuals: dict[str, VisualDef] = {}
     raw_vis = raw.get("visuals") or {}
@@ -484,17 +519,20 @@ def _visuals_from_page_json(raw: dict[str, Any]) -> dict[str, VisualDef]:
             continue
         if not isinstance(v, dict):
             continue
-        body = _visual_body_from_json(v)
+        # Allow draft visuals with empty template (incomplete until edited)
+        body = _visual_body_from_json(v, allow_empty_asset=True)
         if body is None:
             continue
         asset, sroi, croi = body
         id_ = str(v.get("id") or vid)
+        source_id = str(v["source_id"]).strip() if v.get("source_id") else None
         visuals[id_] = VisualDef(
             id=id_,
             label=str(v.get("label") or id_),
             asset=asset,
             search_roi=list(sroi) if sroi else None,
             content_roi=list(croi) if croi else None,
+            source_id=source_id,
         )
     return visuals
 
@@ -632,17 +670,12 @@ def _features_from_page_json(
             if str(link.get("asset") or "") == detect_rel:
                 recognize_with = fid
                 break
-        if not recognize_with:
-            for fid, feat in features.items():
-                # visual_id already set — resolve after promote; try pending only here
-                _ = fid
-                _ = feat
 
     if recognize_with and recognize_with not in features:
         recognize_with = None
 
     _ = page_id
-    # Stash detect_roi on pending sentinel for promote
+    # Stash detect for promote / post-promote recognize recovery
     if detect_rel:
         pending_links["__detect__"] = {
             "asset": detect_rel,
@@ -674,7 +707,7 @@ def _page_from_json(raw: dict[str, Any], *, page_id: str | None = None) -> PageD
     detect_rel = str((detect_meta or {}).get("asset") or "")
     detect_roi = (detect_meta or {}).get("search_roi")
 
-    source = str(raw.get("source") or "").replace("\\", "/").strip() or None
+    sources = _sources_from_page_json(raw)
 
     page = PageDef(
         page_id=pid,
@@ -682,8 +715,8 @@ def _page_from_json(raw: dict[str, Any], *, page_id: str | None = None) -> PageD
         state_tree=tree,
         features=features,
         visuals=visuals,
+        sources=sources,
         recognize_with=recognize_with,
-        source=source,
         pair_with=str(raw["pair_with"]) if raw.get("pair_with") else None,
         detect_priority=int(raw.get("detect_priority", 0)),
         decide_params=_params_from_json(raw.get("decide_params")),
@@ -699,6 +732,22 @@ def _page_from_json(raw: dict[str, Any], *, page_id: str | None = None) -> PageD
     for feat in page.features.values():
         if feat.visual_id and feat.visual_id not in page.visuals:
             feat.visual_id = None
+    # Legacy single source: attach visuals that have content_roi but no source_id
+    if "s_legacy" in page.sources:
+        for vis in page.visuals.values():
+            if not vis.source_id and vis.content_roi:
+                vis.source_id = "s_legacy"
+    # Drop dangling source_id
+    for vis in page.visuals.values():
+        if vis.source_id and vis.source_id not in page.sources:
+            vis.source_id = None
+    # Modern pages: recover recognize_with from detect via selected visuals
+    if detect_rel and not page.recognize_with:
+        for fid in page.features:
+            vis = page.feature_visual(fid)
+            if vis and vis.asset == detect_rel:
+                page.recognize_with = fid
+                break
     return page
 
 
@@ -721,11 +770,21 @@ def _visual_to_json(vis: VisualDef) -> dict[str, Any]:
         "template": vis.asset,
         "asset": vis.asset,
     }
+    if vis.source_id:
+        out["source_id"] = vis.source_id
     if vis.search_roi:
         out["search_roi"] = list(vis.search_roi)
     if vis.content_roi:
         out["content_roi"] = list(vis.content_roi)
     return out
+
+
+def _source_to_json(src) -> dict[str, Any]:
+    return {
+        "id": src.id,
+        "label": src.label or src.id,
+        "path": src.path,
+    }
 
 
 def _feature_to_json(feat: FeatureDef) -> dict[str, Any]:
@@ -747,12 +806,11 @@ def page_to_dict(page: PageDef) -> dict[str, Any]:
         "detect_priority": page.detect_priority,
         "pair_with": page.pair_with,
         "recognize_with": page.recognize_with,
+        "sources": {sid: _source_to_json(s) for sid, s in page.sources.items()},
         "visuals": {vid: _visual_to_json(v) for vid, v in page.visuals.items()},
         "features": {fid: _feature_to_json(f) for fid, f in page.features.items()},
         "state_tree": [_node_to_json(n) for n in page.state_tree],
     }
-    if page.source:
-        item["source"] = page.source
     dp = _params_to_json(page.decide_params)
     if dp:
         item["decide_params"] = dp
@@ -852,6 +910,9 @@ def load_project(project_dir: str | Path) -> Project:
         var_defaults=dict(data.get("vars") or {}),
         var_schema=var_schema,
     )
+    for page in project.pages.values():
+        ensure_page_asset_dirs(project, page.page_id)
+        migrate_legacy_source_files(project, page)
     rebuild_resource_index(project)
     return project
 

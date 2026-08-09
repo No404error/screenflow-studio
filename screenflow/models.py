@@ -123,6 +123,18 @@ class StateNode:
 
 
 @dataclass
+class SourceDef:
+    """Page-level original screenshot (Studio material; not used at runtime)."""
+
+    id: str
+    label: str = ""
+    path: str = ""  # project-relative image path
+
+    def display_name(self) -> str:
+        return (self.label or self.id).strip() or self.id
+
+
+@dataclass
 class VisualDef:
     """
     匹配方案 (Match setup / Visual): where to search + what template to match.
@@ -132,10 +144,12 @@ class VisualDef:
 
     id: str
     label: str = ""
-    asset: str = ""  # template: project-relative image path
+    asset: str = ""  # derived template crop: project-relative image path
     search_roi: list[float] | None = None  # [y0,y1,x0,x1] 0–1 screen; None = full frame
-    # Crop rect on page source (Studio overlay only; not used by matcher)
+    # Crop rect on the selected original (Studio overlay; drives re-crop of asset)
     content_roi: list[float] | None = None
+    # Which page original this setup is edited against
+    source_id: str | None = None
 
     @property
     def template(self) -> str:
@@ -145,9 +159,8 @@ class VisualDef:
         return bool(self.template)
 
 
-# Back-compat aliases
+# Back-compat alias (tests / older imports)
 FeatureVisual = VisualDef
-FeatureLink = VisualDef
 
 
 @dataclass
@@ -183,10 +196,10 @@ class PageDef:
     features: dict[str, FeatureDef] = field(default_factory=dict)
     # Match setups (visuals) — independent of features; may be idle or shared
     visuals: dict[str, VisualDef] = field(default_factory=dict)
+    # Page originals (full-window screenshots for Studio editing)
+    sources: dict[str, SourceDef] = field(default_factory=dict)
     # Which feature is used to recognize this page (普通画面特征)
     recognize_with: str | None = None
-    # Full-window canvas for match-setup editing (not used at runtime)
-    source: str | None = None
     pair_with: str | None = None
     detect_priority: int = 0
     decide_params: DecideParams = field(default_factory=DecideParams)
@@ -194,6 +207,11 @@ class PageDef:
 
     def display_name(self) -> str:
         return self.name.strip() or self.page_id
+
+    def get_source(self, source_id: str | None) -> SourceDef | None:
+        if not source_id:
+            return None
+        return self.sources.get(str(source_id))
 
     def get_feature(self, feature_id: str | None) -> FeatureDef | None:
         if not feature_id:

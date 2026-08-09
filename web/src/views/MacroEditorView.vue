@@ -35,7 +35,15 @@ function mark() {
 
 async function remove() {
   if (!macro.value) return
-  if (!confirm(t('confirm_delete_macro', { name: macro.value.name || macro.value.id }))) return
+  if (
+    !(await ui.askConfirm({
+      title: t('confirm_delete_macro', { name: macro.value.name || macro.value.id }),
+      danger: true,
+      confirmLabel: t('delete'),
+    }))
+  ) {
+    return
+  }
   await project.removeMacro(macro.value.id)
 }
 </script>

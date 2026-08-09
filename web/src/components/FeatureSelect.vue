@@ -23,7 +23,10 @@ function featureFor(key: string): FeatureDef | null {
 }
 
 function relpathFor(key: string): string | null {
-  return featureFor(key)?.link?.asset || null
+  const f = featureFor(key)
+  if (!f?.visual_id || !props.pageId || !project.project) return null
+  const vis = project.project.page_docs[props.pageId]?.visuals?.[f.visual_id]
+  return vis?.asset || vis?.template || null
 }
 
 function labelFor(key: string): string {

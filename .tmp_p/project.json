@@ -1,0 +1,27 @@
+{
+  "name": "t",
+  "version": 3,
+  "runtime": {
+    "match_threshold": 0.72,
+    "poll_interval": 0.5,
+    "action_delay": 0.45,
+    "action_cooldown": 0.35,
+    "state_conf_margin": 0.03,
+    "state_near": 0.03,
+    "page_pair_margin": 0.03,
+    "page_detect_near": 0.35,
+    "ref_width": 1920,
+    "ref_height": 1080,
+    "verbose_log": false,
+    "allow_redecide_during_action": false,
+    "log_language": "en",
+    "hotkeys": {
+      "start": "f9",
+      "pause": "f10",
+      "stop": "f11"
+    }
+  },
+  "macros": [],
+  "pages": [],
+  "page_pairs": []
+}

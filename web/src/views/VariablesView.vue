@@ -60,13 +60,13 @@ function addRow() {
   project.markDirty()
 }
 
-function rename(oldName: string, newName: string) {
+async function rename(oldName: string, newName: string) {
   ensure()
   const p = project.project!
   newName = newName.trim()
   if (!newName || newName === oldName) return
   if (p.vars![newName] !== undefined) {
-    alert(t('err_var_dup'))
+    await ui.askAlert({ title: t('dialog_notice'), message: t('err_var_dup') })
     return
   }
   p.vars![newName] = p.vars![oldName]

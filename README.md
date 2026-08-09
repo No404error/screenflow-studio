@@ -18,7 +18,7 @@ ScreenFlow is a Windows foreground vision-automation app. It identifies UI state
 
 ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进行视觉识别与键鼠操作。识别依赖屏幕截图与图像模板匹配，不依赖目标进程的内存读取或代码注入。
 
-使用 **Web Studio**（Vue + 本机 API）编辑项目：支持画面特征与贴图解耦、变量声明、引用绑定等。
+使用 **Web Studio**（Vue + 本机 API）编辑项目：支持画面特征 / 原图 / 匹配方案三区模型、变量声明、引用绑定等。
 
 推荐远程仓库名称：`screenflow-studio`。产品显示名称与可执行文件名称保持为 **ScreenFlow**。
 
@@ -26,7 +26,7 @@ ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进�
 
 **支持的能力**
 
-- 依据页面「画面特征」及其绑定贴图判定当前界面
+- 依据页面「画面特征」所选用的匹配方案（模板 + 搜索区）判定当前界面
 - 在页面内按情况树选择分支，并执行点击、按键、等待、宏等动作
 - 在主动作完成后进行后续观察（post-listen），以处理界面后续变化
 - 通过 Web Studio 编辑项目；支持界面语言中文 / English
@@ -43,7 +43,7 @@ ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进�
 
 1. 启动 `release/ScreenFlow.exe`（单文件；首次启动需解压运行时，可能稍慢），浏览器中打开 Web Studio。
 2. 打开或新建项目文件夹。
-3. 添加页面，创建画面特征并绑定贴图（可设「用作本页识别」）。
+3. 添加页面：创建匹配方案与画面特征，并为特征选用方案（可设「用作本页识别」）。
 4. 编辑情况树：为不同界面情况配置动作；未匹配时使用「默认情况」。
 5. 按需配置后续观察。
 6. **保存**后点击 **开始**。默认**提权外部引擎**可能弹出 UAC；也可选用 **inline（进程内）** 模式。
@@ -60,8 +60,9 @@ Web Studio 与引擎可共用同一可执行文件：提权模式下以 `--engin
 | 概念 | 说明 |
 |------|------|
 | 页面 | 一类可识别的界面 |
-| 画面特征 | 逻辑符号（情况打分、点击、本页识别都引用它）；可绑定 / 解绑贴图 |
-| 贴图 | `features/` 下的图像文件；搜索范围写在特征的绑定上 |
+| 画面特征 | 逻辑符号（情况打分、点击、本页识别都引用它）；只选用 / 取消选用一个匹配方案 |
+| 原图 | 页级整窗截图列表（`sources`）；Studio 素材，匹配方案从其上裁切；不参与运行 |
+| 匹配方案 | 选用一张原图 + 搜索区 + 匹配裁切（派生小图在 `features/`）；可共用、可闲置 |
 | 情况 | 同一页面下的分支条件；支持多层判定，并以「默认情况」作为未匹配时的回退 |
 | 动作 | 点击、按键、等待、宏、脚本等可执行步骤 |
 | 后续观察 | 主动作包执行完毕后，按规则继续观察并执行跟进动作 |
@@ -91,8 +92,9 @@ Web Studio 与引擎可共用同一可执行文件：提权模式下以 `--engin
 my_project/
   project.json              # 运行参数、宏、页面列表、vars 等
   pages/{page_id}/
-    page.json               # 画面特征、recognize_with、情况树
-    features/               # 贴图文件
+    page.json               # 画面特征、sources（原图）、visuals（匹配方案）、recognize_with、情况树
+    sources/                # 页级原图（整窗截图）
+    features/               # 匹配方案派生的裁切小图（运行时模板）
   layer_templates/          # 可选：可复用情况模板
   scripts/                  # 可选：脚本步骤
 ```
@@ -171,7 +173,7 @@ Recommended remote repository name: `screenflow-studio`. The product name and ex
 
 **Supported**
 
-- Detect the current page using **screen features** linked to artwork
+- Detect the current page using **screen features** that select a match setup (template + search area)
 - Select a branch via a per-page case tree and run actions (click, key, wait, macro, and related steps)
 - Optionally arm post-listen behavior after the main action pack to follow up on UI changes
 - Edit projects in Web Studio; UI language may be Chinese or English
@@ -188,7 +190,7 @@ Recommended remote repository name: `screenflow-studio`. The product name and ex
 
 1. Launch `release/ScreenFlow.exe` (standalone; first start may be slower while unpacking) and open Web Studio in the browser.
 2. Open or create a project folder.
-3. Add pages, create screen features, and link artwork (mark one for page recognition).
+3. Add pages: create match setups and screen features, then select a setup on each feature (mark one for page recognition).
 4. Edit the case tree; use the default case when nothing else matches.
 5. Configure post-listen where needed.
 6. **Save**, then **Start**. Default **elevated external runner** may show UAC; **inline** mode runs in-process without UAC.
@@ -205,8 +207,9 @@ Automation is stored as a **project folder** (not an installable plugin). Core c
 | Concept | Description |
 |---------|-------------|
 | Page | A recognizable UI surface |
-| Screen feature | Logical id used by cases, clicks, and page recognition; may be linked/unlinked to artwork |
-| Artwork | Image files under `features/`; search area lives on the feature link |
+| Screen feature | Logical id used by cases, clicks, and page recognition; selects at most one match setup |
+| Originals | Page-level full-window screenshots (`sources`); Studio material that setups crop from; not used at runtime |
+| Match setup | Picks one original + search area + match crop (derived template under `features/`); shareable, may be idle |
 | Case | Branching conditions within a page; multi-layer trees with a default case fallback |
 | Actions | Executable steps such as click, key, wait, macro, and script |
 | Post-listen | After the main action pack, continue observing the screen and run follow-up actions per rules |
@@ -236,8 +239,9 @@ Example layout:
 my_project/
   project.json              # Runtime, macros, page list, vars, etc.
   pages/{page_id}/
-    page.json               # Features, recognize_with, case tree
-    features/               # Artwork files
+    page.json               # Features, sources (originals), visuals, recognize_with, case tree
+    sources/                # Page originals (full-window screenshots)
+    features/               # Derived match crops (runtime templates)
   layer_templates/          # Optional reusable case templates
   scripts/                  # Optional script steps
 ```

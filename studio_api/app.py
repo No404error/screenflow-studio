@@ -14,18 +14,20 @@ from pydantic import BaseModel
 
 from screenflow.assets import (
     add_page_feature,
+    add_page_source,
     add_page_visual,
     bind_feature,
     clear_page_source,
     delete_page_asset,
     delete_page_feature,
+    delete_page_source,
     delete_page_visual,
     ensure_page_asset_dirs,
     list_page_assets,
     rename_page_feature,
     select_feature_visual,
-    set_page_source,
     unbind_feature,
+    update_page_source,
     update_page_visual,
     upload_page_asset,
 )
@@ -132,6 +134,7 @@ class VisualCreateBody(BaseModel):
     id: str | None = None
     search_roi: list[float] | None = None
     content_roi: list[float] | None = None
+    source_id: str | None = None
 
 
 class VisualPatchBody(BaseModel):
@@ -141,6 +144,12 @@ class VisualPatchBody(BaseModel):
     content_roi: list[float] | None = None
     clear_search_roi: bool = False
     clear_content_roi: bool = False
+    source_id: str | None = None
+    clear_source_id: bool = False
+
+
+class SourcePatchBody(BaseModel):
+    label: str | None = None
 
 
 class LangBody(BaseModel):
@@ -391,12 +400,13 @@ async def upload_asset(
     return {"name": asset.name, "relpath": asset.relpath}
 
 
-@app.post("/api/project/pages/{page_id}/source")
-async def upload_page_source(
+@app.post("/api/project/pages/{page_id}/sources")
+async def upload_page_source_item(
     page_id: str,
     file: UploadFile = File(...),
+    label: str | None = None,
 ) -> dict[str, Any]:
-    """Store a full-window reference screenshot for ROI overlay (not match artwork)."""
+    """Append a page original screenshot (Studio material for match setups)."""
     project = bridge.project
     if project is None:
         raise HTTPException(404, "No project open")
@@ -408,7 +418,12 @@ async def upload_page_source(
         content = await file.read()
         tmp.write(content)
     try:
-        set_page_source(project, page_id, tmp_path)
+        add_page_source(
+            project,
+            page_id,
+            tmp_path,
+            label=label or Path(file.filename or "source").stem,
+        )
         save_project(project)
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -417,8 +432,55 @@ async def upload_page_source(
     return full_project_dto(project)
 
 
+@app.patch("/api/project/pages/{page_id}/sources/{source_id}")
+def patch_page_source(
+    page_id: str, source_id: str, body: SourcePatchBody
+) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    page = project.pages.get(page_id)
+    if page is None:
+        raise HTTPException(404, "page not found")
+    try:
+        update_page_source(page, source_id, label=body.label)
+    except KeyError as exc:
+        raise HTTPException(404, "source not found") from exc
+    save_project(project)
+    return full_project_dto(project)
+
+
+@app.delete("/api/project/pages/{page_id}/sources/{source_id}")
+def remove_page_source_item(page_id: str, source_id: str) -> dict[str, Any]:
+    project = bridge.project
+    if project is None:
+        raise HTTPException(404, "No project open")
+    if page_id not in project.pages:
+        raise HTTPException(404, "page not found")
+    try:
+        if not delete_page_source(project, page_id, source_id):
+            raise HTTPException(404, "source not found")
+        rebuild_resource_index(project)
+        save_project(project)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return full_project_dto(project)
+
+
+@app.post("/api/project/pages/{page_id}/source")
+async def upload_page_source(
+    page_id: str,
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Back-compat: append an original (same as POST .../sources)."""
+    return await upload_page_source_item(page_id, file)
+
+
 @app.delete("/api/project/pages/{page_id}/source")
 def remove_page_source(page_id: str) -> dict[str, Any]:
+    """Back-compat: clear all page originals."""
     project = bridge.project
     if project is None:
         raise HTTPException(404, "No project open")
@@ -426,6 +488,7 @@ def remove_page_source(page_id: str) -> dict[str, Any]:
         raise HTTPException(404, "page not found")
     try:
         clear_page_source(project, page_id)
+        rebuild_resource_index(project)
         save_project(project)
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -589,6 +652,7 @@ def create_visual(page_id: str, body: VisualCreateBody) -> dict[str, Any]:
             visual_id=body.id,
             search_roi=body.search_roi,
             content_roi=body.content_roi,
+            source_id=body.source_id,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -618,6 +682,10 @@ def patch_visual(page_id: str, visual_id: str, body: VisualPatchBody) -> dict[st
         kwargs["content_roi"] = None
     elif body.content_roi is not None:
         kwargs["content_roi"] = body.content_roi
+    if body.clear_source_id:
+        kwargs["source_id"] = None
+    elif body.source_id is not None:
+        kwargs["source_id"] = body.source_id
     try:
         update_page_visual(page, visual_id, **kwargs)
     except KeyError as exc:

@@ -34,7 +34,10 @@ async function newProject() {
   try {
     const { path: parent } = await api.pickFolder(undefined, t('parent_prompt'))
     if (!parent) return
-    const name = window.prompt(t('project_name'), t('untitled_project'))
+    const name = await ui.askPrompt({
+      title: t('project_name'),
+      initial: t('untitled_project'),
+    })
     if (!name) return
     await project.create(parent, name.trim())
     await router.push('/studio')

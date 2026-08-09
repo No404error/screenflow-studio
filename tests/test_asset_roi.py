@@ -283,7 +283,7 @@ def test_rename_feature_id_rewrites_refs(tmp_path: Path):
 
 
 def test_page_source_and_content_roi_roundtrip(tmp_path: Path):
-    from screenflow.assets import list_page_assets, set_page_source
+    from screenflow.assets import add_page_source, list_page_assets, update_page_visual
     from screenflow.project import load_project, save_project
 
     src = tmp_path / "full.png"
@@ -296,9 +296,9 @@ def test_page_source_and_content_roi_roundtrip(tmp_path: Path):
         pages={"p": page},
         feature_files={},
     )
-    rel_source = set_page_source(project, "p", src)
-    assert rel_source == "pages/p/source.png"
-    assert (tmp_path / "pages" / "p" / "source.png").is_file()
+    src_def = add_page_source(project, "p", src, label="full", source_id="s_full")
+    assert src_def.path == "pages/p/sources/s_full.png"
+    assert (tmp_path / "pages" / "p" / "sources" / "s_full.png").is_file()
 
     asset = upload_page_asset(project, "p", src, preferred_name="mark")
     assert not hasattr(asset, "roi")
@@ -310,26 +310,133 @@ def test_page_source_and_content_roi_roundtrip(tmp_path: Path):
         asset.relpath,
         search_roi=[0.1, 0.6, 0.1, 0.6],
         content_roi=[0.2, 0.4, 0.2, 0.4],
+        source_id="s_full",
     )
     assert feat.has_visual()
     vis = page.feature_visual(feat.id)
     assert vis is not None
     assert vis.template == asset.relpath
-    # Template library entries never carry search ROI
+    assert vis.source_id == "s_full"
     for a in list_page_assets(project, "p"):
         assert not hasattr(a, "roi")
     save_project(project)
 
     back = load_project(tmp_path)
-    assert back.pages["p"].source == "pages/p/source.png"
+    assert "s_full" in back.pages["p"].sources
+    assert back.pages["p"].sources["s_full"].path == "pages/p/sources/s_full.png"
     link = back.pages["p"].feature_visual("mark")
     assert link is not None
     assert link.search_roi == [0.1, 0.6, 0.1, 0.6]
     assert link.content_roi == [0.2, 0.4, 0.2, 0.4]
+    assert link.source_id == "s_full"
 
-    # Updating search_roi alone keeps content_roi
-    bind_feature(back.pages["p"], "mark", link.asset, search_roi=[0.0, 0.5, 0.0, 0.5])
+    vid = back.pages["p"].features["mark"].visual_id
+    assert vid
+    update_page_visual(back.pages["p"], vid, search_roi=[0.0, 0.5, 0.0, 0.5])
     assert back.pages["p"].feature_visual("mark").content_roi == [0.2, 0.4, 0.2, 0.4]
+
+
+def test_legacy_source_migrates_to_sources_list(tmp_path: Path):
+    from screenflow.project import load_project, save_project
+    import json
+
+    page_dir = tmp_path / "pages" / "p"
+    page_dir.mkdir(parents=True)
+    feat_dir = page_dir / "features"
+    feat_dir.mkdir()
+    src = page_dir / "source.png"
+    _write_pattern(src, seed=3, size=32)
+    crop = feat_dir / "ok.png"
+    _write_pattern(crop, seed=4, size=16)
+    (page_dir / "page.json").write_text(
+        json.dumps(
+            {
+                "id": "p",
+                "name": "p",
+                "source": "pages/p/source.png",
+                "visuals": {
+                    "v1": {
+                        "id": "v1",
+                        "label": "v1",
+                        "template": "pages/p/features/ok.png",
+                        "content_roi": [0.1, 0.5, 0.1, 0.5],
+                    }
+                },
+                "features": {"f1": {"id": "f1", "label": "f1", "visual_id": "v1"}},
+                "state_tree": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "project.json").write_text(
+        json.dumps({"name": "t", "version": 3, "pages": ["p"]}),
+        encoding="utf-8",
+    )
+    project = load_project(tmp_path)
+    page = project.pages["p"]
+    assert "s_legacy" in page.sources
+    assert page.sources["s_legacy"].path.startswith("pages/p/sources/")
+    assert not src.exists()
+    assert (tmp_path / page.sources["s_legacy"].path).is_file()
+    assert page.visuals["v1"].source_id == "s_legacy"
+    save_project(project)
+    raw = json.loads((page_dir / "page.json").read_text(encoding="utf-8"))
+    assert "source" not in raw
+    assert "s_legacy" in raw["sources"]
+
+
+def test_delete_page_source_cascades_visuals(tmp_path: Path):
+    from screenflow.assets import add_page_source, add_page_visual, delete_page_source
+
+    src = tmp_path / "a.png"
+    _write_pattern(src, seed=1, size=32)
+    page = make_page("p", state_tree=[])
+    project = Project(
+        name="t",
+        root=tmp_path,
+        runtime=RuntimeConfig(),
+        pages={"p": page},
+        feature_files={},
+    )
+    s = add_page_source(project, "p", src, source_id="s1")
+    crop = upload_page_asset(project, "p", src, preferred_name="c")
+    add_page_visual(
+        page,
+        template=crop.relpath,
+        label="v",
+        visual_id="v1",
+        source_id=s.id,
+        content_roi=[0.1, 0.5, 0.1, 0.5],
+    )
+    feat = add_page_feature(page, feature_id="f1", label="f1")
+    feat.visual_id = "v1"
+    assert delete_page_source(project, "p", "s1")
+    assert "s1" not in page.sources
+    assert "v1" not in page.visuals
+    assert page.features["f1"].visual_id is None
+
+
+def test_multi_sources_append(tmp_path: Path):
+    from screenflow.assets import add_page_source
+
+    a = tmp_path / "a.png"
+    b = tmp_path / "b.png"
+    _write_pattern(a, seed=1, size=24)
+    _write_pattern(b, seed=2, size=24)
+    page = make_page("p", state_tree=[])
+    project = Project(
+        name="t",
+        root=tmp_path,
+        runtime=RuntimeConfig(),
+        pages={"p": page},
+        feature_files={},
+    )
+    s1 = add_page_source(project, "p", a, label="one")
+    s2 = add_page_source(project, "p", b, label="two")
+    assert len(page.sources) == 2
+    assert s1.id != s2.id
+    assert (tmp_path / s1.path).is_file()
+    assert (tmp_path / s2.path).is_file()
 
 
 def test_feature_visual_load_accepts_template_key():
@@ -346,3 +453,98 @@ def test_feature_visual_load_accepts_template_key():
     assert visual.asset == "pages/p/features/a.png"
     assert visual.template == "pages/p/features/a.png"
     assert visual.search_roi == [0.1, 0.2, 0.3, 0.4]
+
+
+def test_delete_feature_clears_score_and_click_refs():
+    from screenflow.assets import delete_page_feature
+    from screenflow.models import ActionStep, ScoreSpec, StateNode
+
+    page = make_page(
+        "p",
+        detect="pages/p/features/main.png",
+        features={"btn": "pages/p/features/btn.png"},
+        state_tree=[
+            StateNode(
+                id="c1",
+                name="hit",
+                score=ScoreSpec(kind="template", key="btn"),
+                actions=[ActionStep(op="click", target="btn")],
+            )
+        ],
+    )
+    assert delete_page_feature(page, "btn")
+    assert "btn" not in page.features
+    assert page.state_tree[0].score.key == ""
+    assert page.state_tree[0].actions[0].target == ""
+
+
+def test_empty_template_visual_roundtrip():
+    from screenflow.models import VisualDef
+    from screenflow.project import _page_from_json, page_to_dict
+
+    page = make_page("p", state_tree=[])
+    page.visuals["draft"] = VisualDef(id="draft", label="draft", asset="")
+    raw = page_to_dict(page)
+    back = _page_from_json(raw)
+    assert "draft" in back.visuals
+    assert back.visuals["draft"].asset == ""
+
+
+def test_delete_asset_cascades_backslash_paths(tmp_path: Path):
+    from screenflow.assets import delete_page_asset, upload_page_asset
+    from screenflow.models import FeatureDef, Project, RuntimeConfig, VisualDef
+    from screenflow.project import rebuild_resource_index
+
+    src = tmp_path / "t.png"
+    _write_pattern(src, seed=1, size=16)
+    page = make_page("p", state_tree=[])
+    project = Project(
+        name="t",
+        root=tmp_path,
+        runtime=RuntimeConfig(),
+        pages={"p": page},
+        feature_files={},
+    )
+    asset = upload_page_asset(project, "p", src, preferred_name="mark")
+    # Store with backslashes as a hostile path form
+    weird = asset.relpath.replace("/", "\\")
+    page.visuals["v"] = VisualDef(id="v", label="v", asset=weird)
+    page.features["f"] = FeatureDef(id="f", label="f", visual_id="v")
+    rebuild_resource_index(project)
+    assert delete_page_asset(project, "p", "mark")
+    assert "v" not in page.visuals
+    assert page.features["f"].visual_id is None
+
+
+def test_bind_feature_does_not_mutate_shared_visual():
+    from screenflow.assets import select_feature_visual
+    from screenflow.models import FeatureDef, VisualDef
+
+    page = make_page("p", state_tree=[])
+    page.visuals["shared"] = VisualDef(
+        id="shared",
+        label="shared",
+        asset="pages/p/features/a.png",
+        search_roi=[0.1, 0.2, 0.3, 0.4],
+    )
+    page.features["a"] = FeatureDef(id="a", label="a", visual_id="shared")
+    page.features["b"] = FeatureDef(id="b", label="b", visual_id="shared")
+    select_feature_visual(page, "a", "shared")
+    select_feature_visual(page, "b", "shared")
+
+    bind_feature(
+        page,
+        "a",
+        "pages/p/features/b.png",
+        search_roi=[0.5, 0.6, 0.5, 0.6],
+        content_roi=[0.5, 0.55, 0.5, 0.55],
+    )
+    assert page.features["a"].visual_id != "shared"
+    assert page.features["b"].visual_id == "shared"
+    shared = page.visuals["shared"]
+    assert shared.asset == "pages/p/features/a.png"
+    assert shared.search_roi == [0.1, 0.2, 0.3, 0.4]
+    new_vis = page.feature_visual("a")
+    assert new_vis is not None
+    assert new_vis.asset == "pages/p/features/b.png"
+    assert new_vis.search_roi == [0.5, 0.6, 0.5, 0.6]

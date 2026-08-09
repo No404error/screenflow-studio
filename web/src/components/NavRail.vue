@@ -59,6 +59,10 @@ function selectVariables() {
   ui.select({ kind: 'variables' })
 }
 function selectMacros() {
+  if (ui.selection.kind === 'macros' || ui.selection.kind === 'macro') {
+    macrosOpen.value = !macrosOpen.value
+    if (ui.selection.kind === 'macros') return
+  }
   macrosOpen.value = true
   ui.select({ kind: 'macros' })
 }
@@ -67,6 +71,13 @@ function selectMacro(id: string) {
   ui.select({ kind: 'macro', macroId: id })
 }
 function selectPages() {
+  if (ui.selection.kind === 'pages' || ui.selection.kind === 'page' || ui.selection.kind === 'state' || ui.selection.kind === 'pairs') {
+    // Already in pages area: toggle fold when clicking the section label again
+    if (ui.selection.kind === 'pages') {
+      pagesOpen.value = !pagesOpen.value
+      return
+    }
+  }
   pagesOpen.value = true
   ui.select({ kind: 'pages' })
 }
@@ -93,8 +104,11 @@ function pageHasError(pageId: string) {
   )
 }
 async function onAddMacro() {
-  const name = window.prompt(t('add_macro'), t('default_macro_name'))
-  if (name) await project.addMacro(name)
+  const name = await ui.askPrompt({
+    title: t('add_macro'),
+    initial: t('default_macro_name'),
+  })
+  if (name) await project.addMacro(name.trim())
 }
 </script>
 

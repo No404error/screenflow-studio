@@ -50,7 +50,6 @@ export type SettingsDTO = {
 }
 
 export const api = {
-  health: () => request<{ status: string }>('/api/health'),
   settings: () => request<SettingsDTO>('/api/settings'),
   patchSettings: (patch: { runner_mode?: string; reopen_last_project?: boolean }) =>
     request<SettingsDTO>('/api/settings', {
@@ -114,20 +113,27 @@ export const api = {
     if (!res.ok) throw new Error(await res.text())
     return res.json() as Promise<{ name: string; relpath: string }>
   },
-  uploadPageSource: async (pageId: string, file: File) => {
+  uploadPageSource: async (pageId: string, file: File, label?: string) => {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await fetch(`/api/project/pages/${encodeURIComponent(pageId)}/source`, {
+    const q = label ? `?label=${encodeURIComponent(label)}` : ''
+    const res = await fetch(`/api/project/pages/${encodeURIComponent(pageId)}/sources${q}`, {
       method: 'POST',
       body: fd,
     })
     if (!res.ok) throw new Error(await res.text())
     return res.json() as Promise<ProjectDTO>
   },
-  deletePageSource: (pageId: string) =>
-    request<ProjectDTO>(`/api/project/pages/${encodeURIComponent(pageId)}/source`, {
-      method: 'DELETE',
-    }),
+  patchPageSource: (pageId: string, sourceId: string, body: { label?: string }) =>
+    request<ProjectDTO>(
+      `/api/project/pages/${encodeURIComponent(pageId)}/sources/${encodeURIComponent(sourceId)}`,
+      { method: 'PATCH', body: JSON.stringify(body) },
+    ),
+  deletePageSource: (pageId: string, sourceId: string) =>
+    request<ProjectDTO>(
+      `/api/project/pages/${encodeURIComponent(pageId)}/sources/${encodeURIComponent(sourceId)}`,
+      { method: 'DELETE' },
+    ),
   deleteAsset: (pageId: string, name: string) =>
     request<ProjectDTO>(
       `/api/project/pages/${encodeURIComponent(pageId)}/assets/${encodeURIComponent(name)}`,
@@ -152,19 +158,6 @@ export const api = {
       `/api/project/pages/${encodeURIComponent(pageId)}/features/${encodeURIComponent(featureId)}`,
       { method: 'DELETE' },
     ),
-  bindFeature: (
-    pageId: string,
-    featureId: string,
-    body: {
-      asset: string
-      search_roi?: number[] | null
-      content_roi?: number[] | null
-    },
-  ) =>
-    request<ProjectDTO>(
-      `/api/project/pages/${encodeURIComponent(pageId)}/features/${encodeURIComponent(featureId)}/bind`,
-      { method: 'PUT', body: JSON.stringify(body) },
-    ),
   selectFeatureVisual: (pageId: string, featureId: string, visualId: string | null) =>
     request<ProjectDTO>(
       `/api/project/pages/${encodeURIComponent(pageId)}/features/${encodeURIComponent(featureId)}/visual`,
@@ -183,6 +176,7 @@ export const api = {
       id?: string
       search_roi?: number[] | null
       content_roi?: number[] | null
+      source_id?: string | null
     },
   ) =>
     request<ProjectDTO>(`/api/project/pages/${encodeURIComponent(pageId)}/visuals`, {
@@ -199,6 +193,8 @@ export const api = {
       content_roi?: number[] | null
       clear_search_roi?: boolean
       clear_content_roi?: boolean
+      source_id?: string | null
+      clear_source_id?: boolean
     },
   ) =>
     request<ProjectDTO>(
@@ -238,13 +234,6 @@ export const api = {
   enginePause: () => request('/api/engine/pause', { method: 'POST' }),
   engineResume: () => request('/api/engine/resume', { method: 'POST' }),
   engineStop: () => request('/api/engine/stop', { method: 'POST' }),
-  engineStatus: () =>
-    request<{
-      status: EngineStatus
-      logs: string[]
-      running: boolean
-      runner_mode?: string
-    }>('/api/engine/status'),
   patchRuntime: (runtime: Record<string, unknown>) =>
     request('/api/engine/runtime', {
       method: 'PATCH',

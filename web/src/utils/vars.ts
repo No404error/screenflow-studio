@@ -100,19 +100,6 @@ export function collectVarRefs(project: ProjectDTO): VarRef[] {
   return out
 }
 
-export function findNode(nodes: StateNode[], id: string): StateNode | null {
-  for (const n of nodes) {
-    if (n.id === id) return n
-    const c = findNode(n.children || [], id)
-    if (c) return c
-    if (n.post?.tree) {
-      const p = findNode(n.post.tree, id)
-      if (p) return p
-    }
-  }
-  return null
-}
-
 export function declaredVarNames(project: ProjectDTO): Set<string> {
   return new Set(Object.keys(project.vars || {}))
 }

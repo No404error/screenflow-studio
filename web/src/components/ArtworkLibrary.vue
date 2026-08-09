@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { api } from '@/api/client'
 import { useI18n } from '@/i18n'
 import { useProjectStore } from '@/stores/project'
+import { useUiStore } from '@/stores/ui'
 import SectionTitle from '@/components/SectionTitle.vue'
 import AssetUploadWizard from '@/components/AssetUploadWizard.vue'
 import ImageLightbox from '@/components/ImageLightbox.vue'
@@ -20,6 +21,7 @@ const props = withDefaults(
 
 const { t } = useI18n()
 const project = useProjectStore()
+const ui = useUiStore()
 const fileInput = ref<HTMLInputElement | null>(null)
 const pending = ref<{ file: File; url: string; name: string } | null>(null)
 const preview = ref<PageAsset | null>(null)
@@ -68,27 +70,34 @@ async function finishUpload(payload: {
   name: string
 }) {
   if (!pending.value) return
-  const { file, url } = pending.value
-  pending.value = null
-  URL.revokeObjectURL(url)
+  const held = pending.value
   try {
-    const toSend = await cropFileByRoi(file, payload.contentRoi)
+    const toSend = await cropFileByRoi(held.file, payload.contentRoi)
     await api.uploadAsset(props.pageId, toSend, payload.name || undefined)
-    await project.refreshFromServer()
+    project.applyServerSnapshot(await api.getProject())
+    URL.revokeObjectURL(held.url)
+    pending.value = null
   } catch (e) {
-    alert(String(e))
+    ui.showToast(String(e), 'danger')
+    // Keep pending for retry.
   }
 }
 
 async function remove(a: PageAsset) {
   const used = linkedLabels(a.relpath)
-  const msg = used.length
-    ? t('confirm_delete_artwork_linked', { name: a.name, features: used.join(', ') })
-    : t('confirm_delete_named', { name: a.name })
-  if (!confirm(msg)) return
-  await api.deleteAsset(props.pageId, a.name)
+  if (
+    !(await ui.askConfirm({
+      title: used.length
+        ? t('confirm_delete_artwork_linked', { name: a.name, features: used.join(', ') })
+        : t('confirm_delete_named', { name: a.name }),
+      danger: true,
+      confirmLabel: t('delete'),
+    }))
+  ) {
+    return
+  }
+  project.applyServerSnapshot(await api.deleteAsset(props.pageId, a.name))
   if (preview.value?.relpath === a.relpath) preview.value = null
-  await project.refreshFromServer()
 }
 </script>
 
@@ -149,6 +158,7 @@ async function remove(a: PageAsset) {
       :src="pending.url"
       :preferred-name="pending.name"
       mode="content"
+      context="library"
       @close="cancelPending"
       @done="finishUpload"
     />
@@ -200,7 +210,7 @@ async function remove(a: PageAsset) {
   width: 100%;
   border: none;
   padding: 0;
-  background: #111;
+  background: var(--sf-media-well);
   border-radius: 4px;
   overflow: hidden;
   aspect-ratio: 16 / 10;

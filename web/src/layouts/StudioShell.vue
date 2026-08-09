@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from '@/i18n'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 import { useUiStore } from '@/stores/ui'
 import { useProjectStore } from '@/stores/project'
 import { useRunStore } from '@/stores/run'
@@ -27,6 +28,18 @@ const router = useRouter()
 const route = useRoute()
 const aboutOpen = ref(false)
 let applyingDeepLink = false
+
+useEscapeKey(() => {
+  if (ui.unsavedPrompt) {
+    ui.answerUnsaved('cancel')
+    return true
+  }
+  if (aboutOpen.value) {
+    aboutOpen.value = false
+    return true
+  }
+  return false
+})
 
 watch(
   () => project.hasProject,
@@ -128,7 +141,7 @@ async function closeProject() {
           <option value="en">EN</option>
           <option value="zh">中文</option>
         </select>
-        <button type="button" class="sf-btn sf-btn-ghost" @click="aboutOpen = true">
+        <button type="button" class="sf-btn sf-btn-ghost" @click="aboutOpen = !aboutOpen">
           <I18nText k="about" />
         </button>
         <button
