@@ -49,7 +49,7 @@ from studio_api.serialize import (
     resolve_under_root,
 )
 
-app = FastAPI(title="ScreenFlow Web Studio API", version="0.1.0")
+app = FastAPI(title="ScreenFlow Web Studio API", version="2.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
