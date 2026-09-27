@@ -25,11 +25,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   })
   if (!res.ok) {
-    let detail: unknown
+    const body = await res.text()
+    let detail: unknown = body
     try {
-      detail = await res.json()
+      detail = JSON.parse(body)
     } catch {
-      detail = await res.text()
+      // Keep non-JSON error responses as plain text.
     }
     const payload =
       typeof detail === 'object' && detail && 'detail' in detail
