@@ -31,14 +31,13 @@ for pkg in ("cv2", "mss"):
     hiddenimports += pkg_hidden
 
 excludes = [
+    # /api/dialog/folder uses tkinter; keep it and its Tcl/Tk runtime in the executable.
     "pytest",
     "unittest",
     "PyQt5",
     "PyQt6",
     "PySide2",
     "PySide6",
-    "tkinter",
-    "_tkinter",
     "matplotlib",
 ]
 
