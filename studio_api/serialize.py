@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +14,7 @@ from screenflow.assets import (
     sync_page_asset_maps,
 )
 from screenflow.models import Project
+from screenflow.path_policy import resolve_project_path, validate_page_id
 from screenflow.project import (
     _macros_from_json,
     _page_from_json,
@@ -95,9 +98,20 @@ def full_project_dto(project: Project) -> dict[str, Any]:
         pages[pid] = doc
     root["page_docs"] = pages
     root["root"] = str(project.root)
+    root["revision"] = project_revision(project)
     if project.var_schema:
         root["var_schema"] = project.var_schema
     return root
+
+
+def project_revision(project: Project) -> str:
+    """Hash editable project state so stale editor snapshots can be rejected."""
+    data = {
+        "project": project_to_dict(project),
+        "pages": {pid: page_to_dict(page) for pid, page in project.pages.items()},
+    }
+    raw = json.dumps(data, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def apply_full_project_dto(project: Project, data: dict[str, Any]) -> Project:
@@ -116,6 +130,7 @@ def apply_full_project_dto(project: Project, data: dict[str, Any]) -> Project:
         page_ids = [str(x) for x in raw_pages]
 
     for pid in page_ids:
+        validate_page_id(pid)
         raw = page_docs.get(pid) if isinstance(page_docs, dict) else None
         if not isinstance(raw, dict):
             if pid in project.pages:
@@ -168,10 +183,4 @@ def apply_full_project_dto(project: Project, data: dict[str, Any]) -> Project:
 
 
 def resolve_under_root(root: Path, relpath: str) -> Path:
-    rel = Path(str(relpath).replace("\\", "/"))
-    if rel.is_absolute():
-        raise ValueError("absolute paths not allowed")
-    full = (root / rel).resolve()
-    if not str(full).startswith(str(root.resolve())):
-        raise ValueError("path escapes project root")
-    return full
+    return resolve_project_path(root, relpath)

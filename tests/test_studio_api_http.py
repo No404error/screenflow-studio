@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
+import httpx
+import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from screenflow.project import new_blank_project
 from studio_api.app import app
@@ -53,6 +57,101 @@ def test_health_and_open_save(tmp_path: Path) -> None:
     r7 = client.patch("/api/settings", json={"runner_mode": "inline"})
     assert r7.status_code == 200
     assert r7.json()["runner_mode"] == "inline"
+
+
+def test_api_rejects_untrusted_browser_origin() -> None:
+    client = TestClient(app)
+    headers = {"Origin": "https://untrusted.example"}
+    assert client.get("/api/health", headers=headers).status_code == 403
+    assert client.post("/api/project/close", headers=headers).status_code == 403
+    preflight = client.options(
+        "/api/project/open",
+        headers={
+            **headers,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert preflight.status_code in (400, 403)
+    assert preflight.headers.get("access-control-allow-origin") != headers["Origin"]
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/api/ws", headers=headers):
+            pass
+
+
+def test_api_accepts_dev_origin() -> None:
+    client = TestClient(app)
+    response = client.get("/api/health", headers={"Origin": "http://127.0.0.1:5173"})
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5173"
+
+
+def test_stale_project_save_is_rejected(tmp_path: Path) -> None:
+    root = new_blank_project(tmp_path / "stale")
+    client = TestClient(app)
+    original = client.post("/api/project/open", json={"path": str(root)}).json()
+    first = {**original, "name": "first edit"}
+    assert client.put("/api/project", json={"project": first}).status_code == 200
+    second = {**original, "name": "stale edit"}
+    response = client.put("/api/project", json={"project": second})
+    assert response.status_code == 409
+    assert client.get("/api/project").json()["name"] == "first edit"
+
+
+def test_simultaneous_saves_cannot_both_commit(tmp_path: Path) -> None:
+    root = new_blank_project(tmp_path / "concurrent")
+
+    async def scenario() -> list[int]:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            dto = (await client.post("/api/project/open", json={"path": str(root)})).json()
+            first = {**dto, "name": "first"}
+            second = {**dto, "name": "second"}
+            responses = await asyncio.gather(
+                client.put("/api/project", json={"project": first}),
+                client.put("/api/project", json={"project": second}),
+            )
+            return [r.status_code for r in responses]
+
+    assert sorted(asyncio.run(scenario())) == [200, 409]
+
+
+def test_save_rejects_page_id_traversal(tmp_path: Path) -> None:
+    root = new_blank_project(tmp_path / "project")
+    client = TestClient(app)
+    dto = client.post("/api/project/open", json={"path": str(root)}).json()
+    dto["page_docs"] = {"../../outside": {"id": "../../outside", "name": "bad"}}
+    response = client.put("/api/project", json={"project": dto})
+    assert response.status_code == 400
+    assert not (tmp_path / "outside").exists()
+
+
+def test_file_api_rejects_sibling_prefix_path(tmp_path: Path) -> None:
+    root = new_blank_project(tmp_path / "project")
+    sibling = tmp_path / "project_private"
+    sibling.mkdir()
+    (sibling / "secret.txt").write_text("secret", encoding="utf-8")
+    client = TestClient(app)
+    assert client.post("/api/project/open", json={"path": str(root)}).status_code == 200
+    response = client.get("/api/file", params={"relpath": "../project_private/secret.txt"})
+    assert response.status_code == 400
+
+
+def test_template_api_rejects_traversal_name(tmp_path: Path) -> None:
+    root = new_blank_project(tmp_path / "project")
+    client = TestClient(app)
+    assert client.post("/api/project/open", json={"path": str(root)}).status_code == 200
+    response = client.get("/api/templates/..%5C..%5Coutside")
+    assert response.status_code == 400
+
+
+def test_editor_dirty_state_is_tracked_per_tab() -> None:
+    lifecycle.reset_for_tests()
+    client = TestClient(app)
+    assert client.put("/api/app/editor-state", json={"client_id": "tab-a", "dirty": True}).json()["dirty"] is True
+    assert client.put("/api/app/editor-state", json={"client_id": "tab-b", "dirty": False}).json()["dirty"] is True
+    assert client.delete("/api/app/editor-state/tab-a").json()["dirty"] is False
+    lifecycle.reset_for_tests()
 
 
 def test_page_sources_upload_patch_and_delete(tmp_path: Path) -> None:

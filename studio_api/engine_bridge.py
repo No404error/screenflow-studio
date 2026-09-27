@@ -52,6 +52,11 @@ class EngineBridge:
             self.stop_unlocked()
             self._project = project
 
+    def replace_project_after_save(self, project: Project) -> None:
+        """Publish a successfully saved edit without interrupting a running engine."""
+        with self._lock:
+            self._project = project
+
     def subscribe(self, cb: Callable[[dict[str, Any]], None]) -> Callable[[], None]:
         self._listeners.append(cb)
 

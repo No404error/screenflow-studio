@@ -7,6 +7,7 @@ from pathlib import Path
 
 from screenflow.models import Project, StateNode
 from screenflow.project import _node_from_json, _node_to_json
+from screenflow.path_policy import validate_page_id
 
 
 def templates_dir(project: Project) -> Path:
@@ -31,6 +32,6 @@ def save_template(project: Project, name: str, roots: list[StateNode]) -> Path:
 
 
 def load_template(project: Project, name: str) -> list[StateNode]:
-    path = templates_dir(project) / f"{name}.json"
+    path = templates_dir(project) / f"{validate_page_id(name)}.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     return [_node_from_json(n) for n in data.get("tree") or []]

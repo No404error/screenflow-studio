@@ -245,12 +245,17 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ runtime }),
     }),
-  setEditorState: (body: { dirty: boolean }) =>
+  setEditorState: (body: { dirty: boolean; client_id: string }) =>
     request<{ dirty: boolean }>('/api/app/editor-state', {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
   getEditorState: () => request<{ dirty: boolean }>('/api/app/editor-state'),
+  clearEditorState: (clientId: string) =>
+    request<{ dirty: boolean }>(`/api/app/editor-state/${encodeURIComponent(clientId)}`, {
+      method: 'DELETE',
+      keepalive: true,
+    }),
   shutdownApp: (opts?: { force?: boolean }) =>
     request<{ ok: boolean; status: string }>('/api/app/shutdown', {
       method: 'POST',

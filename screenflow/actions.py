@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
@@ -9,10 +15,13 @@ from screenflow.input import InputController
 from screenflow.logfmt import EngineLog
 from screenflow.matcher import ScreenMatcher
 from screenflow.models import ActionStep, Project
+from screenflow.path_policy import resolve_project_path
 
 
 class ActionRunner:
     """Expand macros and run action step packs."""
+
+    SCRIPT_TIMEOUT_S = 30.0
 
     def __init__(
         self,
@@ -210,38 +219,84 @@ class ActionRunner:
         params: dict[str, Any] | None = None,
     ) -> bool:
         """Phase 3: load project script and call run(ctx, params)."""
-        path = (self.project.root / rel).resolve()
-        if not str(path).startswith(str(self.project.root.resolve())):
+        try:
+            path = resolve_project_path(self.project.root, rel)
+        except ValueError:
             self.log.info("Action: script path escapes project")
             return False
         if not path.is_file():
             self.log.info(f"Action: script not found {rel}")
             return False
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location("sf_user_script", path)
-        if spec is None or spec.loader is None:
-            return False
-        mod = importlib.util.module_from_spec(spec)
         try:
-            spec.loader.exec_module(mod)
-            run = getattr(mod, "run", None)
-            if not callable(run):
-                self.log.info("Action: script missing run(ctx, params)")
-                return False
-            ctx = {
-                "project_root": str(self.project.root),
-                "page_id": page_id,
-                "vars": vars if vars is not None else {},
-                "log": self.log.info,
-            }
-            result = run(ctx, dict(params) if params else {})
-            if result == "abort_pack":
-                return False
-            return True
+            return self._run_script_child(path, page_id=page_id, vars=vars, params=params)
         except Exception as exc:
             self.log.info(f"Action: script error {exc}")
             return False
+
+    def _run_script_child(
+        self,
+        path: Path,
+        *,
+        page_id: str | None,
+        vars: dict[str, Any] | None,
+        params: dict[str, Any] | None,
+    ) -> bool:
+        with tempfile.TemporaryDirectory(prefix="screenflow-script-") as folder:
+            request_path = Path(folder) / "request.json"
+            response_path = Path(folder) / "response.json"
+            request_path.write_text(
+                json.dumps({
+                    "project_root": str(self.project.root),
+                    "script": str(path),
+                    "page_id": page_id,
+                    "vars": vars if vars is not None else {},
+                    "params": params or {},
+                }),
+                encoding="utf-8",
+            )
+            command = (
+                [sys.executable, "--script-worker", str(request_path), str(response_path)]
+                if getattr(sys, "frozen", False)
+                else [sys.executable, "-I", str(Path(__file__).with_name("script_worker.py")), str(request_path), str(response_path)]
+            )
+            kwargs: dict[str, Any] = {}
+            if sys.platform == "win32":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            proc = subprocess.Popen(
+                command,
+                cwd=self.project.root,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                **kwargs,
+            )
+            deadline = time.monotonic() + self.SCRIPT_TIMEOUT_S
+            try:
+                while proc.poll() is None:
+                    if not self._is_running():
+                        self.log.info("Action: script stopped with engine")
+                        return False
+                    if time.monotonic() >= deadline:
+                        self.log.info(f"Action: script timed out after {self.SCRIPT_TIMEOUT_S:g}s")
+                        return False
+                    time.sleep(0.05)
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait()
+            if not response_path.is_file():
+                self.log.info("Action: script exited without a result")
+                return False
+            response = json.loads(response_path.read_text(encoding="utf-8"))
+        for message in response.get("logs", []):
+            self.log.info(str(message))
+        if not response.get("ok"):
+            self.log.info(f"Action: script error {response.get('error', 'unknown error')}")
+            return False
+        if vars is not None:
+            vars.clear()
+            vars.update(response.get("vars") or {})
+        return not response.get("abort", False)
 
 
 def _parse_var(text: str) -> Any:

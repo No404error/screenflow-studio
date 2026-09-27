@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -47,17 +50,41 @@ from studio_api import lifecycle
 from studio_api.serialize import (
     apply_full_project_dto,
     full_project_dto,
+    project_revision,
     resolve_under_root,
 )
 
 app = FastAPI(title="ScreenFlow Web Studio API", version="2.0.0")
+_DEV_ORIGINS = {"http://127.0.0.1:5173", "http://localhost:5173"}
+_project_write_lock = asyncio.Lock()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=sorted(_DEV_ORIGINS),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"])
+
+
+def _allowed_origin(origin: str | None, scheme: str, host: str) -> bool:
+    return not origin or origin == f"{scheme}://{host}" or origin in _DEV_ORIGINS
+
+
+@app.middleware("http")
+async def protect_local_api(request: Request, call_next):
+    if request.url.path.startswith("/api/"):
+        origin = request.headers.get("origin")
+        if not _allowed_origin(origin, request.url.scheme, request.headers.get("host", "")) or request.headers.get("sec-fetch-site") == "cross-site":
+            return JSONResponse({"detail": "origin not allowed"}, status_code=403)
+        if (
+            request.url.path.startswith("/api/project/")
+            or request.url.path == "/api/project"
+            or (request.method in {"POST", "PATCH"} and request.url.path in {"/api/engine/start", "/api/engine/runtime"})
+        ):
+            async with _project_write_lock:
+                return await call_next(request)
+    return await call_next(request)
 
 _i18n = I18n(lang="en")
 
@@ -169,6 +196,7 @@ class StartBody(BaseModel):
 
 class EditorStateBody(BaseModel):
     dirty: bool = False
+    client_id: str = "legacy"
 
 
 class ShutdownBody(BaseModel):
@@ -197,7 +225,13 @@ def health() -> dict[str, str]:
 @app.put("/api/app/editor-state")
 def put_editor_state(body: EditorStateBody) -> dict[str, Any]:
     """Browser reports unsaved edits so tray Quit can warn (option A)."""
-    lifecycle.set_editor_dirty(bool(body.dirty))
+    lifecycle.set_editor_dirty(bool(body.dirty), body.client_id)
+    return {"dirty": lifecycle.is_editor_dirty()}
+
+
+@app.delete("/api/app/editor-state/{client_id}")
+def remove_editor_state(client_id: str) -> dict[str, Any]:
+    lifecycle.remove_editor_client(client_id)
     return {"dirty": lifecycle.is_editor_dirty()}
 
 
@@ -345,12 +379,16 @@ def get_project() -> dict[str, Any]:
 def save_project_api(body: SaveBody) -> dict[str, Any]:
     if bridge.project is None:
         raise HTTPException(404, "No project open")
+    if body.project.get("revision") != project_revision(bridge.project):
+        raise HTTPException(409, {"code": "stale_project", "message": "Project changed in another editor; reopen it before saving"})
     try:
-        apply_full_project_dto(bridge.project, body.project)
-        save_project(bridge.project)
+        candidate = deepcopy(bridge.project)
+        apply_full_project_dto(candidate, body.project)
+        save_project(candidate)
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
-    return full_project_dto(bridge.project)
+    bridge.replace_project_after_save(candidate)
+    return full_project_dto(candidate)
 
 
 @app.post("/api/project/add-page")
@@ -911,6 +949,9 @@ def patch_runtime(body: RuntimeBody) -> dict[str, Any]:
 
 @app.websocket("/api/ws")
 async def websocket_endpoint(ws: WebSocket) -> None:
+    if not _allowed_origin(ws.headers.get("origin"), "https" if ws.url.scheme == "wss" else "http", ws.headers.get("host", "")):
+        await ws.close(code=1008)
+        return
     await ws.accept()
     queue: list[dict[str, Any]] = []
 

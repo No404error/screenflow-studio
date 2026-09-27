@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -31,6 +33,7 @@ from screenflow.models import (
     DEFAULT_STATE,
     normalize_post_mode,
 )
+from screenflow.path_policy import resolve_project_path, validate_page_id
 
 
 class ProjectLoadError(ValueError):
@@ -845,6 +848,7 @@ def _macros_from_json(raw_macros: Any) -> dict[str, MacroDef]:
 
 def load_project(project_dir: str | Path) -> Project:
     root = Path(project_dir).resolve()
+    _recover_incomplete_saves(root)
     meta_path = root / "project.json"
     if not meta_path.exists():
         raise FileNotFoundError(f"project.json not found in {root}")
@@ -871,7 +875,8 @@ def load_project(project_dir: str | Path) -> Project:
         )
 
     for page_id in page_ids:
-        pj = root / "pages" / page_id / "page.json"
+        validate_page_id(page_id)
+        pj = resolve_project_path(root, f"pages/{page_id}/page.json")
         if not pj.is_file():
             raise ProjectLoadError(f"Missing page file: {pj}")
         raw = json.loads(pj.read_text(encoding="utf-8"))
@@ -971,29 +976,111 @@ def project_to_dict(project: Project) -> dict[str, Any]:
     return out
 
 
+def _journal_target(root: Path, relpath: str) -> Path:
+    parts = relpath.replace("\\", "/").split("/")
+    if parts == ["project.json"]:
+        return root / "project.json"
+    if len(parts) == 3 and parts[0] == "pages" and parts[2] == "page.json":
+        validate_page_id(parts[1])
+        return resolve_project_path(root, relpath)
+    raise ValueError("invalid save journal target")
+
+
+def _restore_save_journal(root: Path, stage: Path, manifest: dict[str, Any]) -> None:
+    for entry in reversed(manifest["targets"]):
+        target = _journal_target(root, entry["path"])
+        backup_name = entry.get("backup")
+        if backup_name is None:
+            target.unlink(missing_ok=True)
+        else:
+            if Path(backup_name).name != backup_name:
+                raise ValueError("invalid save journal backup")
+            backup = stage / backup_name
+            if not backup.resolve().is_relative_to(stage.resolve()) or not backup.is_file():
+                raise FileNotFoundError(backup)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(backup, target)
+
+
+def _remove_stale_page_dirs(root: Path, page_ids: set[str]) -> None:
+    for page_id in page_ids:
+        try:
+            stale_dir = resolve_project_path(root, f"pages/{validate_page_id(page_id)}")
+        except ValueError:
+            continue
+        shutil.rmtree(stale_dir, ignore_errors=True)
+
+
+def _recover_incomplete_saves(root: Path) -> None:
+    if not root.is_dir():
+        return
+    for stage in root.glob(".screenflow-save-*"):
+        manifest_path = stage / "manifest.json"
+        if not stage.is_dir() or stage.is_symlink() or getattr(stage, "is_junction", lambda: False)() or not manifest_path.is_file():
+            continue
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if (stage / "committed").exists():
+            _remove_stale_page_dirs(root, set(manifest.get("stale_pages") or []))
+        else:
+            _restore_save_journal(root, stage, manifest)
+        shutil.rmtree(stage, ignore_errors=True)
+
+
 def save_project(project: Project) -> Path:
+    for page_id in project.pages:
+        validate_page_id(page_id)
+    _recover_incomplete_saves(project.root)
     rebuild_resource_index(project)
+    project.root.mkdir(parents=True, exist_ok=True)
     (project.root / "pages").mkdir(parents=True, exist_ok=True)
+    path = project.root / "project.json"
+    old_page_ids: set[str] = set()
+    if path.is_file():
+        try:
+            old_page_ids = {
+                pid for pid in json.loads(path.read_text(encoding="utf-8")).get("pages", [])
+                if isinstance(pid, str) and validate_page_id(pid)
+            }
+        except (OSError, ValueError, TypeError):
+            pass
+
+    writes: list[tuple[Path, str]] = []
     for page in project.pages.values():
         ensure_page_asset_dirs(project, page.page_id)
         pj = page_json_path(project, page.page_id)
-        pj.parent.mkdir(parents=True, exist_ok=True)
-        pj.write_text(
-            json.dumps(page_to_dict(page), indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
-    # Drop page folders no longer in the project
-    pages_root = project.root / "pages"
-    if pages_root.is_dir():
-        keep = set(project.pages.keys())
-        for child in list(pages_root.iterdir()):
-            if child.is_dir() and child.name not in keep:
-                shutil.rmtree(child, ignore_errors=True)
-    path = project.root / "project.json"
-    path.write_text(
-        json.dumps(project_to_dict(project), indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+        writes.append((pj, json.dumps(page_to_dict(page), indent=2, ensure_ascii=False) + "\n"))
+    writes.append((path, json.dumps(project_to_dict(project), indent=2, ensure_ascii=False) + "\n"))
+
+    # The journal lets the next open restore the old snapshot after a process crash.
+    stage = Path(tempfile.mkdtemp(prefix=".screenflow-save-", dir=project.root))
+    manifest: dict[str, Any] = {
+        "targets": [],
+        "stale_pages": sorted(old_page_ids - project.pages.keys()),
+    }
+    try:
+        staged: list[tuple[Path, Path]] = []
+        for index, (target, content) in enumerate(writes):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            new_file = stage / f"new-{index}.json"
+            new_file.write_text(content, encoding="utf-8")
+            backup_name = f"old-{index}.json" if target.is_file() else None
+            if backup_name is not None:
+                shutil.copy2(target, stage / backup_name)
+            relpath = target.relative_to(project.root).as_posix()
+            manifest["targets"].append({"path": relpath, "backup": backup_name})
+            staged.append((target, new_file))
+        (stage / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        for target, new_file in staged:
+            os.replace(new_file, target)
+        (stage / "committed").write_text("ok", encoding="utf-8")
+    except Exception:
+        if (stage / "manifest.json").is_file():
+            _restore_save_journal(project.root, stage, manifest)
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+
+    _remove_stale_page_dirs(project.root, set(manifest["stale_pages"]))
+    shutil.rmtree(stage, ignore_errors=True)
     return path
 
 

@@ -6,6 +6,8 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 ROOT = Path(SPECPATH).resolve().parent
+if not (ROOT / "run_app.py").is_file():
+    ROOT = ROOT.parent
 
 block_cipher = None
 

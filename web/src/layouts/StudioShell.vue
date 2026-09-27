@@ -123,6 +123,14 @@ async function closeProject() {
   await project.close()
   await router.replace('/')
 }
+
+async function saveProject() {
+  try {
+    await project.save()
+  } catch (err) {
+    ui.showToast(String(err), 'danger')
+  }
+}
 </script>
 
 <template>
@@ -149,7 +157,7 @@ async function closeProject() {
         <button
           class="sf-btn sf-btn-primary"
           :disabled="project.saving || !project.dirty"
-          @click="project.save()"
+          @click="saveProject"
         >
           <I18nText k="save" />
         </button>

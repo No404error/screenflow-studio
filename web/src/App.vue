@@ -15,13 +15,20 @@ const run = useRunStore()
 const project = useProjectStore()
 const router = useRouter()
 let didAutoReopen = false
+const editorClientId = crypto.randomUUID()
+
+function reportEditorState() {
+  if (ui.appExited) return
+  void api.setEditorState({ client_id: editorClientId, dirty: Boolean(project.dirty) }).catch(() => {})
+}
+
+function releaseEditorState() {
+  void api.clearEditorState(editorClientId).catch(() => {})
+}
 
 watch(
   () => project.dirty,
-  (dirty) => {
-    if (ui.appExited) return
-    void api.setEditorState({ dirty: Boolean(dirty) }).catch(() => {})
-  },
+  () => reportEditorState(),
   { immediate: true },
 )
 
@@ -33,7 +40,7 @@ function onKey(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
     e.preventDefault()
     const p = useProjectStore()
-    if (p.hasProject) void p.save()
+    if (p.hasProject) void p.save().catch((err) => ui.showToast(String(err), 'danger'))
   }
 }
 
@@ -52,6 +59,7 @@ function onWheelCapture(e: WheelEvent) {
 }
 
 onMounted(async () => {
+  window.addEventListener('pagehide', releaseEditorState)
   const s = await ui.loadSettings()
   if (s.runner_mode === 'elevate' || s.runner_mode === 'inline') {
     run.runnerMode = s.runner_mode
@@ -71,6 +79,8 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('pagehide', releaseEditorState)
+  releaseEditorState()
   window.removeEventListener('keydown', onKey)
   document.removeEventListener('wheel', onWheelCapture, true)
 })

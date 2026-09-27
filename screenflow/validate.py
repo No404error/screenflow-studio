@@ -11,6 +11,7 @@ from screenflow.models import (
     normalize_post_mode,
 )
 from screenflow.project import iter_tree
+from screenflow.path_policy import resolve_project_path
 
 
 @dataclass
@@ -323,9 +324,11 @@ def _walk_steps_refs(
                     )
                 )
             else:
-                root = project.root.resolve()
-                path = (root / rel).resolve()
-                if not str(path).startswith(str(root)) or not path.is_file():
+                try:
+                    path = resolve_project_path(project.root, rel)
+                except ValueError:
+                    path = None
+                if path is None or not path.is_file():
                     issues.append(
                         Issue(
                             "warning",
@@ -507,4 +510,23 @@ def validate_for_start(project: Project, t) -> list[Issue]:
                 )
             )
 
+    def tree_has_script(nodes: list[StateNode]) -> bool:
+        for node in nodes:
+            if any(step.op == "script" for step in node.actions):
+                return True
+            if tree_has_script(node.children):
+                return True
+            if node.post and tree_has_script(node.post.tree):
+                return True
+        return False
+
+    has_script = any(any(step.op == "script" for step in macro.steps) for macro in project.macros.values())
+    if not has_script:
+        has_script = any(
+            tree_has_script(page.state_tree)
+            or (page.default_post is not None and tree_has_script(page.default_post.tree))
+            for page in project.pages.values()
+        )
+    if has_script:
+        issues.append(Issue("warning", t("val_script_trust")))
     return issues

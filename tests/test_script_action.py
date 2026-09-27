@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -78,6 +79,27 @@ def test_run_script_receives_params(tmp_path):
         is True
     )
     assert vars_.get("n") == 7
+
+
+def test_script_timeout_stops_child(tmp_path):
+    runner = _runner(tmp_path, "import time\ndef run(ctx, params):\n    time.sleep(5)\n")
+    runner.SCRIPT_TIMEOUT_S = 0.1
+    start = time.monotonic()
+    assert runner._run_script("scripts/job.py", page_id="p", vars={}) is False
+    assert time.monotonic() - start < 2
+    assert any("timed out" in call.args[0] for call in runner.log.info.call_args_list)
+
+
+def test_script_runs_in_separate_process(tmp_path):
+    import os
+
+    runner = _runner(
+        tmp_path,
+        "import os\ndef run(ctx, params):\n    os.environ['SCREENFLOW_SCRIPT_TEST'] = 'child'\n",
+    )
+    before = os.environ.get("SCREENFLOW_SCRIPT_TEST")
+    assert runner._run_script("scripts/job.py", page_id="p", vars={}) is True
+    assert os.environ.get("SCREENFLOW_SCRIPT_TEST") == before
 
 
 def test_script_params_json_roundtrip():

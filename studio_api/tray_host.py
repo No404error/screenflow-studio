@@ -98,7 +98,7 @@ def _on_quit(icon: Any = None, item: Any = None) -> None:  # noqa: ARG001
             return
         if choice == "cancel":
             return
-        lifecycle.set_editor_dirty(False)
+        lifecycle.clear_editor_dirty()
     lifecycle.perform_shutdown()
 
 

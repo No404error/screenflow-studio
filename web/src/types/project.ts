@@ -143,6 +143,7 @@ export interface VarSchemaEntry {
 
 export interface ProjectDTO {
   name: string
+  revision?: string
   version?: number
   root?: string
   runtime: RuntimeConfig

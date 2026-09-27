@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from screenflow.models import FeatureDef, PageDef, Project, SourceDef, StateNode, VisualDef
+from screenflow.path_policy import resolve_project_path, validate_page_id
 from screenflow.roi import normalize_roi
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
@@ -23,14 +24,11 @@ class PageAsset:
 
 def resolve_asset_path(project: Project, relpath: str | Path) -> Path:
     """Resolve an asset relpath against the project root."""
-    rel = Path(str(relpath).replace("\\", "/"))
-    if rel.is_absolute():
-        return rel
-    return (project.root / rel).resolve()
+    return resolve_project_path(project.root, str(relpath))
 
 
 def page_dir(project: Project, page_id: str) -> Path:
-    return project.root / "pages" / page_id
+    return resolve_project_path(project.root, f"pages/{validate_page_id(page_id)}")
 
 
 def page_json_path(project: Project, page_id: str) -> Path:
@@ -309,8 +307,11 @@ def delete_page_source(project: Project, page_id: str, source_id: str) -> bool:
     dead = [vid for vid, v in page.visuals.items() if v.source_id == source_id]
     for vid in dead:
         delete_page_visual(page, vid)
-    path = resolve_asset_path(project, src.path)
-    if path.is_file():
+    try:
+        path = resolve_asset_path(project, src.path)
+    except ValueError:
+        path = None
+    if path is not None and path.is_file():
         path.unlink(missing_ok=True)
     del page.sources[source_id]
     return True
@@ -496,7 +497,11 @@ def feature_setup_problem(
     vis = page.feature_visual(feature_id)
     if vis is None or not vis.is_complete():
         return "unselected"
-    if not resolve_asset_path(project, vis.asset).is_file():
+    try:
+        file_ok = resolve_asset_path(project, vis.asset).is_file()
+    except ValueError:
+        file_ok = False
+    if not file_ok:
         return "file_missing"
     return None
 

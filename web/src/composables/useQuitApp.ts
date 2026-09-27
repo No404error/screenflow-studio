@@ -32,7 +32,6 @@ export function useQuitApp() {
     }
 
     try {
-      await api.setEditorState({ dirty: false })
       await api.shutdownApp({ force: true })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)

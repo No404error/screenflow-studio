@@ -7,7 +7,7 @@ import webbrowser
 from typing import Any, Callable
 
 _lock = threading.Lock()
-_editor_dirty = False
+_editor_clients: dict[str, bool] = {}
 _studio_url = "http://127.0.0.1:8787"
 _server: Any = None
 _tray_stop: Callable[[], None] | None = None
@@ -33,15 +33,24 @@ def set_tray_stop(cb: Callable[[], None] | None) -> None:
     _tray_stop = cb
 
 
-def set_editor_dirty(dirty: bool) -> None:
-    global _editor_dirty
+def set_editor_dirty(dirty: bool, client_id: str = "legacy") -> None:
     with _lock:
-        _editor_dirty = bool(dirty)
+        _editor_clients[client_id] = bool(dirty)
+
+
+def remove_editor_client(client_id: str) -> None:
+    with _lock:
+        _editor_clients.pop(client_id, None)
+
+
+def clear_editor_dirty() -> None:
+    with _lock:
+        _editor_clients.clear()
 
 
 def is_editor_dirty() -> bool:
     with _lock:
-        return _editor_dirty
+        return any(_editor_clients.values())
 
 
 def is_shutting_down() -> bool:
@@ -84,9 +93,9 @@ def perform_shutdown() -> dict[str, Any]:
 
 def reset_for_tests() -> None:
     """Clear lifecycle state between unit tests."""
-    global _editor_dirty, _server, _tray_stop, _shutting_down
+    global _server, _tray_stop, _shutting_down
     with _lock:
-        _editor_dirty = False
+        _editor_clients.clear()
         _shutting_down = False
     _server = None
     _tray_stop = None

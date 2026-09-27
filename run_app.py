@@ -30,6 +30,10 @@ def _ensure_stdio() -> None:
 def main(argv: list[str] | None = None) -> int:
     _ensure_stdio()
     args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] == "--script-worker":
+        from screenflow.script_worker import main as script_worker_main
+
+        return int(script_worker_main(args[1], args[2]))
     if ENGINE_RUNNER_FLAG in args:
         args = [a for a in args if a != ENGINE_RUNNER_FLAG]
         # Match run_runner.py: detach console when started via python.exe / UAC.

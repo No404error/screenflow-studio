@@ -28,6 +28,15 @@ def _proj(root: Path, pages: dict[str, PageDef], macros=None) -> Project:
     )
 
 
+def test_script_requires_trust_warning(tmp_path: Path) -> None:
+    page = PageDef(
+        page_id="p",
+        state_tree=[StateNode(id="s", name="Script", is_else=True, actions=[ActionStep("script", "scripts/job.py")])],
+    )
+    issues = validate_for_start(_proj(tmp_path, {"p": page}), I18n(lang="en").t)
+    assert any(issue.level == "warning" and "Windows account" in issue.text for issue in issues)
+
+
 def test_scoreless_non_else_is_error():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)

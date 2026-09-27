@@ -32,12 +32,15 @@ export const useProjectStore = defineStore('project', () => {
   const dirty = ref(false)
   const issues = ref<Issue[]>([])
   const saving = ref(false)
+  let editGeneration = 0
+  let savePromise: Promise<void> | null = null
 
   const hasProject = computed(() => !!project.value)
   const varRefs = computed(() => (project.value ? collectVarRefs(project.value) : []))
   const undeclared = computed(() => (project.value ? undeclaredRefs(project.value) : []))
 
   function markDirty() {
+    editGeneration += 1
     dirty.value = true
   }
 
@@ -68,8 +71,10 @@ export const useProjectStore = defineStore('project', () => {
     ui.select({ kind: 'variables' })
   }
 
-  async function save() {
+  async function saveOnce() {
     if (!project.value) return
+    const source = project.value
+    const generation = editGeneration
     saving.value = true
     try {
       // Sync pages id list from page_docs
@@ -84,12 +89,31 @@ export const useProjectStore = defineStore('project', () => {
         pairs.push([page.id, page.pair_with])
       }
       project.value.page_pairs = pairs
-      const saved = await api.saveProject(project.value)
-      setProject(saved)
-      const ui = useUiStore()
-      ui.showToast(useRunStore().isActive ? t('save_reload_hint') : t('saved'))
+      const submitted = JSON.stringify(source)
+      const saved = await api.saveProject(source)
+      if (project.value !== source) return
+      if (editGeneration === generation && JSON.stringify(source) === submitted) {
+        setProject(saved)
+        const ui = useUiStore()
+        ui.showToast(useRunStore().isActive ? t('save_reload_hint') : t('saved'))
+      } else {
+        // A later edit belongs to the next save, not the older response.
+        source.revision = saved.revision
+        dirty.value = true
+      }
     } finally {
       saving.value = false
+    }
+  }
+
+  async function save() {
+    if (savePromise) return savePromise
+    const task = saveOnce()
+    savePromise = task
+    try {
+      await task
+    } finally {
+      if (savePromise === task) savePromise = null
     }
   }
 
@@ -106,7 +130,10 @@ export const useProjectStore = defineStore('project', () => {
     const ui = useUiStore()
     const choice = await ui.askUnsaved()
     if (choice === 'cancel') return false
-    if (choice === 'save') await save()
+    if (choice === 'save') {
+      await save()
+      if (dirty.value) return false
+    }
     return true
   }
 
@@ -136,7 +163,10 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function saveIfDirty() {
-    if (dirty.value) await save()
+    if (dirty.value) {
+      await save()
+      if (dirty.value) throw new Error('Project changed while saving; save again')
+    }
   }
 
   /**
@@ -165,7 +195,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   async function validate() {
-    if (dirty.value) await save()
+    await saveIfDirty()
     const r = await api.validate()
     issues.value = r.issues
     return r

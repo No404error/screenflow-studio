@@ -82,12 +82,13 @@ Web Studio 与引擎可共用同一可执行文件：提权模式下以 `--engin
 - 步骤可配置可选的 JSON 对象作为 `params`（未配置时为 `{}`）。
 - 若 `run` 返回 `"abort_pack"`，将中止当前动作包。
 - 脚本路径不得逃逸出项目根目录；启动前校验会检查文件是否存在。
+- 含脚本的项目在启动前会显示信任提示；脚本在独立进程运行，默认 30 秒超时，停止引擎时会终止脚本进程。
+- 独立进程仍使用当前 Windows 账户权限，不是操作系统级安全沙箱。只运行可信项目的脚本。
 
 **后续待完善**
 
-- 执行超时、取消与更明确的错误呈现
 - 开发期热重载（修改脚本后无需整包重启引擎）
-- 运行隔离 / 沙箱策略
+- 操作系统级脚本沙箱
 - 更丰富的 `ctx`（例如受控的匹配、输入等引擎能力）
 - Studio 内更完整的脚本编辑与调试体验
 
@@ -235,12 +236,13 @@ Automation is stored as a **project folder** (not an installable plugin). Core c
 - An optional JSON object on the step is passed as `params` (defaults to `{}`).
 - If `run` returns `"abort_pack"`, the current action pack is aborted.
 - Script paths must remain under the project root; pre-start validation checks that the file exists.
+- Projects containing scripts show a trust warning before Start. Scripts run in a child process with a 30-second timeout and are terminated when the engine stops.
+- The child process still has the current Windows account's permissions; it is not an OS security sandbox. Run scripts only from trusted projects.
 
 **Planned improvements**
 
-- Execution timeout, cancellation, and clearer error reporting
 - Hot reload during development (apply script edits without a full engine restart)
-- Isolation / sandbox policy for user scripts
+- OS-level sandbox for user scripts
 - Richer `ctx` (controlled access to matching, input, and related engine capabilities)
 - Fuller in-Studio editing and debugging for scripts
 
