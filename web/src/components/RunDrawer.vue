@@ -1,32 +1,17 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useI18n } from '@/i18n'
 import { useRunStore } from '@/stores/run'
 import { usePrefsStore } from '@/stores/prefs'
-import { useUiStore } from '@/stores/ui'
 import { useProjectStore } from '@/stores/project'
 import SectionHelp from '@/components/SectionHelp.vue'
 import SectionTitle from '@/components/SectionTitle.vue'
 
-const { t } = useI18n()
 const run = useRunStore()
 const prefs = usePrefsStore()
-const ui = useUiStore()
 const project = useProjectStore()
 
 function mark() {
   project.markDirty()
 }
-
-async function onRunnerMode(ev: Event) {
-  const v = (ev.target as HTMLSelectElement).value
-  await run.setRunnerMode(v)
-}
-
-onMounted(async () => {
-  const s = await ui.loadSettings()
-  if (s?.runner_mode) run.runnerMode = s.runner_mode
-})
 </script>
 
 <template>
@@ -62,13 +47,6 @@ onMounted(async () => {
 
       <SectionTitle title-key="sec_runtime" help-key="help_runtime" />
       <div class="sf-grid-fields">
-        <label class="sf-field sf-field-select">
-          <span class="sf-label"><I18nText k="runner_mode" /></span>
-          <select class="sf-select" :value="run.runnerMode" @change="onRunnerMode">
-            <option value="elevate">{{ t('runner_elevate') }}</option>
-            <option value="inline">{{ t('runner_inline') }}</option>
-          </select>
-        </label>
         <label class="sf-field">
           <span class="sf-label"><I18nText k="match_threshold" /></span>
           <input

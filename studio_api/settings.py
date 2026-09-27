@@ -149,22 +149,14 @@ def default_runner_mode() -> str:
 
 def get_runner_mode() -> str:
     """
-    Engine process mode: elevate (external UAC runner) or inline (in-process).
-    Env SCREENFLOW_RUNNER=inline|elevate overrides ui.json.
+    Engine process mode: elevated runner by default on Windows.
+    Inline mode is available only through SCREENFLOW_RUNNER=inline for debugging.
+    Ignore the old persisted setting so users cannot be stuck in inline mode.
     """
     env = (os.environ.get("SCREENFLOW_RUNNER") or "").strip().lower()
     if env in (RUNNER_ELEVATE, RUNNER_INLINE):
         return env
-    val = load_ui_settings().get("runner_mode")
-    if val in (RUNNER_ELEVATE, RUNNER_INLINE):
-        return str(val)
     return default_runner_mode()
-
-
-def set_runner_mode(mode: str) -> None:
-    if mode not in (RUNNER_ELEVATE, RUNNER_INLINE):
-        raise ValueError(f"invalid runner_mode: {mode}")
-    update_ui_settings(runner_mode=mode)
 
 
 def set_reopen_last_project(enabled: bool) -> None:

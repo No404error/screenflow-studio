@@ -127,12 +127,12 @@ def test_runner_mode_settings(tmp_path, monkeypatch):
         settings, "legacy_settings_path", lambda: tmp_path / "missing.json"
     )
     monkeypatch.delenv("SCREENFLOW_RUNNER", raising=False)
-    settings.set_runner_mode(settings.RUNNER_INLINE)
-    assert settings.get_runner_mode() == settings.RUNNER_INLINE
-    settings.set_runner_mode(settings.RUNNER_ELEVATE)
-    assert settings.get_runner_mode() == settings.RUNNER_ELEVATE
+    settings.update_ui_settings(runner_mode=settings.RUNNER_INLINE)
+    assert settings.get_runner_mode() == settings.default_runner_mode()
     monkeypatch.setenv("SCREENFLOW_RUNNER", "inline")
     assert settings.get_runner_mode() == settings.RUNNER_INLINE
+    monkeypatch.setenv("SCREENFLOW_RUNNER", "elevate")
+    assert settings.get_runner_mode() == settings.RUNNER_ELEVATE
 
 
 

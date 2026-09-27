@@ -9,8 +9,6 @@ export const useRunStore = defineStore('run', () => {
   const status = ref<EngineStatus>({ mode: 'idle' })
   const logs = ref<string[]>([])
   const connected = ref(false)
-  /** Win default is elevate; synced from API settings / WS hello. */
-  const runnerMode = ref('elevate')
   const pendingWarnings = ref<Issue[] | null>(null)
   let ws: WebSocket | null = null
 
@@ -30,12 +28,11 @@ export const useRunStore = defineStore('run', () => {
         type?: string
         payload?: EngineStatus
         message?: string
-        snapshot?: { status: EngineStatus; logs: string[]; runner_mode?: string }
+        snapshot?: { status: EngineStatus; logs: string[] }
       }
       if (e.type === 'hello' && e.snapshot) {
         status.value = e.snapshot.status || { mode: 'idle' }
         logs.value = e.snapshot.logs || []
-        if (e.snapshot.runner_mode) runnerMode.value = e.snapshot.runner_mode
         connected.value = true
       } else if (e.type === 'status' && e.payload) {
         status.value = e.payload
@@ -62,12 +59,10 @@ export const useRunStore = defineStore('run', () => {
     }
     try {
       const snap = await api.engineStart({
-        mode: runnerMode.value,
         allow_warnings: !!opts?.allowWarnings,
       })
       status.value = snap.status
       logs.value = snap.logs || []
-      if (snap.runner_mode) runnerMode.value = snap.runner_mode
       pendingWarnings.value = null
       prefs.drawerOpen = true
     } catch (e) {
@@ -88,11 +83,6 @@ export const useRunStore = defineStore('run', () => {
 
   function dismissWarnings() {
     pendingWarnings.value = null
-  }
-
-  async function setRunnerMode(mode: string) {
-    runnerMode.value = mode
-    await api.patchSettings({ runner_mode: mode })
   }
 
   async function pause() {
@@ -122,7 +112,6 @@ export const useRunStore = defineStore('run', () => {
     status,
     logs,
     connected,
-    runnerMode,
     pendingWarnings,
     mode,
     liveVars,
@@ -134,7 +123,6 @@ export const useRunStore = defineStore('run', () => {
     start,
     confirmWarnings,
     dismissWarnings,
-    setRunnerMode,
     pause,
     resume,
     stop,

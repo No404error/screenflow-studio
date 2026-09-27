@@ -8,7 +8,7 @@ export const helpEn: Record<string, string> = {
   help_dialog_title: 'Details',
   help_runtime:
     'Project-wide defaults for how often to capture the screen and how strict matching is.\n' +
-    '• Engine process — Run as Administrator (separate process) may show a system prompt on Start; In-process is for debug only.\n' +
+    '• On Windows, starting the engine may show a system administrator prompt.\n' +
     '• Min. similarity — score must reach this (0–1) to count as a match; raise to reduce false matches, lower if matches are missed.\n' +
     '• Screenshot interval (s) — time between captures; shorter reacts faster but uses more CPU.\n' +
     '• Case near-tie tolerance / Case required lead — how close case scores may be, and how far the winner must beat #2.\n' +
@@ -174,7 +174,7 @@ export const helpZh: Record<string, string> = {
   help_dialog_title: '详细说明',
   help_runtime:
     '项目级默认：多久截一次屏，以及匹配要多严格。\n' +
-    '• 引擎进程方式 —「以管理员身份运行」在开始时可能弹出系统权限提示；「在本程序内运行」仅供调试。\n' +
+    '• 在 Windows 上启动引擎时，可能弹出系统管理员权限提示。\n' +
     '• 最低相似度 — 达到该值（0～1）才算匹配；调高可减少误认，调低可减少漏认。\n' +
     '• 截屏间隔（秒） — 两次截屏之间的等待；越短反应越快，也更占资源。\n' +
     '• 情况相近容差 / 情况领先要求 — 情况得分多接近算「接近」，以及第一名须比第二名高出多少。\n' +

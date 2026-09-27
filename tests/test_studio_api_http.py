@@ -14,6 +14,13 @@ from screenflow.project import new_blank_project
 from studio_api.app import app
 from studio_api.engine_bridge import bridge
 from studio_api import lifecycle
+from studio_api import settings as ui_settings
+
+
+@pytest.fixture(autouse=True)
+def isolated_ui_settings(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(ui_settings, "config_dir", lambda: tmp_path / ".screenflow")
+    monkeypatch.setattr(ui_settings, "legacy_settings_path", lambda: tmp_path / "missing.json")
 
 
 def test_health_and_open_save(tmp_path: Path) -> None:
@@ -55,8 +62,9 @@ def test_health_and_open_save(tmp_path: Path) -> None:
     assert len(r6.json()["tree"]) == 1
 
     r7 = client.patch("/api/settings", json={"runner_mode": "inline"})
-    assert r7.status_code == 200
-    assert r7.json()["runner_mode"] == "inline"
+    assert r7.status_code == 400
+    assert client.get("/api/settings").json()["runner_mode"] == bridge.runner_mode
+    assert client.post("/api/engine/start", json={"mode": "inline"}).status_code == 400
 
 
 def test_api_rejects_untrusted_browser_origin() -> None:

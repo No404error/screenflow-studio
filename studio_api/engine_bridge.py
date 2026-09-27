@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import threading
 from collections import deque
 from typing import Any, Callable
@@ -39,13 +38,6 @@ class EngineBridge:
     @property
     def runner_mode(self) -> str:
         return self._mode
-
-    def set_runner_mode(self, mode: str) -> None:
-        m = (mode or "").strip().lower()
-        if m not in (ui_settings.RUNNER_ELEVATE, ui_settings.RUNNER_INLINE):
-            raise ValueError("runner_mode must be elevate or inline")
-        self._mode = m
-        ui_settings.update_ui_settings(runner_mode=m)
 
     def set_project(self, project: Project | None) -> None:
         with self._lock:
@@ -103,11 +95,9 @@ class EngineBridge:
             return [Issue("error", "No project open")]
         return validate_for_start(self._project, t)
 
-    def start(self, *, persist: bool = True, mode: str | None = None) -> None:
+    def start(self, *, persist: bool = True) -> None:
         if self._project is None:
             raise RuntimeError("No project open")
-        if mode:
-            self.set_runner_mode(mode)
         rebuild_resource_index(self._project)
         if persist:
             save_project(self._project)

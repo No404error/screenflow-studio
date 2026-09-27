@@ -61,9 +61,6 @@ function onWheelCapture(e: WheelEvent) {
 onMounted(async () => {
   window.addEventListener('pagehide', releaseEditorState)
   const s = await ui.loadSettings()
-  if (s.runner_mode === 'elevate' || s.runner_mode === 'inline') {
-    run.runnerMode = s.runner_mode
-  }
   run.connect()
   window.addEventListener('keydown', onKey)
   document.addEventListener('wheel', onWheelCapture, { capture: true, passive: false })

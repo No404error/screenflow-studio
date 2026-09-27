@@ -52,7 +52,7 @@ export type SettingsDTO = {
 
 export const api = {
   settings: () => request<SettingsDTO>('/api/settings'),
-  patchSettings: (patch: { runner_mode?: string; reopen_last_project?: boolean }) =>
+  patchSettings: (patch: { reopen_last_project?: boolean }) =>
     request<SettingsDTO>('/api/settings', {
       method: 'PATCH',
       body: JSON.stringify(patch),
@@ -229,7 +229,7 @@ export const api = {
       ok: boolean
       has_warnings: boolean
     }>('/api/validate', { method: 'POST' }),
-  engineStart: (opts?: { mode?: string; allow_warnings?: boolean }) =>
+  engineStart: (opts?: { allow_warnings?: boolean }) =>
     request<{ status: EngineStatus; logs: string[]; running?: boolean; runner_mode?: string }>(
       '/api/engine/start',
       {

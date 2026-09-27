@@ -46,7 +46,7 @@ ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进�
 3. 添加页面：创建匹配方案与画面特征，并为特征选用方案（可设「用作本页识别」）。
 4. 编辑情况树：为不同界面情况配置动作；未匹配时使用「默认情况」。
 5. 按需配置后续观察。
-6. **保存**后点击 **开始**。默认**提权外部引擎**可能弹出 UAC；也可选用 **inline（进程内）** 模式。
+6. **保存**后点击 **开始**。Windows 默认启动**提权外部引擎**，可能弹出 UAC。
 7. 可在界面中切换语言。
 
 **退出与后台**
@@ -56,7 +56,7 @@ ScreenFlow 根据使用者配置的项目规则，对**前台**应用程序进�
 - 托盘退出时若有未保存更改：可选打开 Studio 保存、丢弃并退出，或取消。
 - 退出时会停止引擎；若仍残留，可在任务管理器中结束对应的 `ScreenFlow.exe`。
 
-Web Studio 与引擎可共用同一可执行文件：提权模式下以 `--engine-runner` 启动第二进程；inline 模式不另起进程。
+Web Studio 与引擎可共用同一可执行文件：提权模式下以 `--engine-runner` 启动第二进程。开发调试时可在启动程序前设置 `SCREENFLOW_RUNNER=inline`，让引擎在主进程内运行；普通界面不提供此选项。
 
 ### 项目模型
 
@@ -200,7 +200,7 @@ Recommended remote repository name: `screenflow-studio`. The product name and ex
 3. Add pages: create match setups and screen features, then select a setup on each feature (mark one for page recognition).
 4. Edit the case tree; use the default case when nothing else matches.
 5. Configure post-listen where needed.
-6. **Save**, then **Start**. Default **elevated external runner** may show UAC; **inline** mode runs in-process without UAC.
+6. **Save**, then **Start**. On Windows, the default **elevated external runner** may show UAC.
 7. Switch UI language in the app as needed.
 
 **Quit vs background**
@@ -210,7 +210,7 @@ Recommended remote repository name: `screenflow-studio`. The product name and ex
 - If the tray Quit runs while edits are unsaved: open Studio to save, discard and quit, or cancel.
 - Exit stops the engine; if a process remains, end the corresponding `ScreenFlow.exe` in Task Manager.
 
-Web Studio and the engine can share one executable: elevate mode starts a second process with `--engine-runner`; inline mode does not.
+Web Studio and the engine can share one executable: elevate mode starts a second process with `--engine-runner`. For development, set `SCREENFLOW_RUNNER=inline` before starting the app to run the engine in-process; the regular UI does not expose this option.
 
 ### Project model
 

@@ -294,10 +294,7 @@ def set_lang(body: LangBody) -> dict[str, str]:
 @app.patch("/api/settings")
 def patch_settings(body: SettingsPatch) -> dict[str, Any]:
     if body.runner_mode is not None:
-        try:
-            bridge.set_runner_mode(body.runner_mode)
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
+        raise HTTPException(400, "Runner mode is controlled by SCREENFLOW_RUNNER")
     if body.reopen_last_project is not None:
         ui_settings.set_reopen_last_project(body.reopen_last_project)
     return get_settings()
@@ -881,6 +878,8 @@ def load_template_api(name: str) -> dict[str, Any]:
 @app.post("/api/engine/start")
 def engine_start(body: StartBody | None = None) -> dict[str, Any]:
     body = body or StartBody()
+    if body.mode is not None:
+        raise HTTPException(400, "Runner mode is controlled by SCREENFLOW_RUNNER")
     _sync_ui_lang()
     issues = bridge.validate(_t)
     serialized = [{"level": i.level, "text": i.text} for i in issues]
@@ -904,7 +903,7 @@ def engine_start(body: StartBody | None = None) -> dict[str, Any]:
             },
         )
     try:
-        bridge.start(persist=True, mode=body.mode)
+        bridge.start(persist=True)
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
     return bridge.snapshot()
